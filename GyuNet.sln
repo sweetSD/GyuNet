@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.33529.622
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GyuNet", "GyuNet\GyuNet.csproj", "{6188C7D5-3962-4522-B1D1-8E474D44FD27}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GyuNet-Test", "GyuNet-Test\GyuNet-Test.csproj", "{BC763E80-179E-4EF2-AA12-6873F0FBC82C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GyuNet-Core", "GyuNet-Core\GyuNet-Core.csproj", "{E88FF711-093F-4E93-AF70-F6D6E8BB9B4A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6188C7D5-3962-4522-B1D1-8E474D44FD27}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6188C7D5-3962-4522-B1D1-8E474D44FD27}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6188C7D5-3962-4522-B1D1-8E474D44FD27}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6188C7D5-3962-4522-B1D1-8E474D44FD27}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BC763E80-179E-4EF2-AA12-6873F0FBC82C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BC763E80-179E-4EF2-AA12-6873F0FBC82C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BC763E80-179E-4EF2-AA12-6873F0FBC82C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BC763E80-179E-4EF2-AA12-6873F0FBC82C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E88FF711-093F-4E93-AF70-F6D6E8BB9B4A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E88FF711-093F-4E93-AF70-F6D6E8BB9B4A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E88FF711-093F-4E93-AF70-F6D6E8BB9B4A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E88FF711-093F-4E93-AF70-F6D6E8BB9B4A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {2C298372-F5D5-4D45-9561-993255A750A5}
+	EndGlobalSection
+EndGlobal

@@ -2,7 +2,7 @@
 using System.Net.Sockets;
 namespace GyuNet
 {
-    public class GyuNetUtility
+    public static class GyuNetUtility
     {
         public static string GetIP()
         {

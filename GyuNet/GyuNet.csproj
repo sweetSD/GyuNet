@@ -48,8 +48,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="GyuNet.cs" />
-    <Compile Include="GyuNetIOCP.cs" />
     <Compile Include="GyuNetUtility.cs" />
+    <Compile Include="GyuNetPool.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

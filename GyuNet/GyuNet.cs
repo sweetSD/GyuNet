@@ -20,21 +20,19 @@ namespace GyuNet
     {
         public bool IsRunning { get; private set; } = false;
         
-        private TcpListener tcpListener;
-        private GyuNetIOCP iocp;
-        
-        private readonly object clientListLock = new object();
-        private readonly List<TcpClient> clientList = new List<TcpClient>();
-        
+        private Socket serverSocket;
         private CancellationTokenSource serverTerminateCancellationTokenSource = null;
         
         public void Start()
         {
             IsRunning = true;
             serverTerminateCancellationTokenSource = new CancellationTokenSource();
-            iocp = new GyuNetIOCP(serverTerminateCancellationTokenSource.Token);
 
-            Task.Run(StartListener, serverTerminateCancellationTokenSource.Token);
+            GyuNetPool.EventArgs.Spawned += OnSpawnEventArgs;
+            GyuNetPool.EventArgs.Despawned += OnDespawnEventArgs;
+
+            InitListenSocket();
+
             Task.Run(Update, serverTerminateCancellationTokenSource.Token);
         }
 
@@ -42,23 +40,7 @@ namespace GyuNet
         {
             while (IsRunning)
             {
-                while (iocp.ReceivedPacketQueue.IsEmpty == false)
-                {
-                    if (iocp.ReceivedPacketQueue.TryDequeue(out var packet))
-                    {
-                        Debug.Log(packet.Header);
-
-                        switch (packet.Header)
-                        {
-                            case PacketHeader.PING:
-                                Debug.Log("Ping!");
-                                break;
-                            case PacketHeader.PONG:
-                                Debug.Log("Pong!");
-                                break;
-                        }
-                    }
-                }
+                
             }
         }
 
@@ -69,15 +51,17 @@ namespace GyuNet
             IsRunning = false;
             serverTerminateCancellationTokenSource?.Cancel();
             serverTerminateCancellationTokenSource?.Dispose();
-            tcpListener?.Stop();
+            serverSocket?.Close();
         }
 
-        private async void StartListener()
+        private void InitListenSocket()
         {
             try
             {
-                tcpListener = new TcpListener(IPAddress.Any, Define.TCP_PORT);
-                tcpListener?.Start();
+                serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                serverSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                serverSocket.Bind(new IPEndPoint(IPAddress.Any, Define.TCP_PORT));
+                serverSocket.Listen(10);
             }
             catch (Exception e)
             {
@@ -86,29 +70,137 @@ namespace GyuNet
                 Stop();
             }
             
-            while (IsRunning)
-            {
-                try
-                {
-                    Debug.Log("Start Accept");
-                    var tcpClient = await (tcpListener?.AcceptTcpClientAsync() ?? Task.FromResult<TcpClient>(null));
-                    Debug.Log("Accept Success");
+            StartAccept();
+        }
+        
+        private void OnSpawnEventArgs(SocketAsyncEventArgs args)
+        {
+            args.Completed += EventArgsOnCompleted;
+        }
 
-                    if (tcpClient != null)
-                    {
-                        lock (clientListLock)
-                        {
-                            iocp.AddClient(tcpClient.Client);
-                        }
-                    }
-                    Debug.Log($"새로운 클라이언트 연결됨. {tcpClient?.Client.RemoteEndPoint}");
-                }
-                catch (Exception e)
+        private void OnDespawnEventArgs(SocketAsyncEventArgs args)
+        {
+            args.Completed -= EventArgsOnCompleted;
+            if (args.Buffer != null)
+            {
+                GyuNetPool.Memories.Push(args.Buffer);
+                // 메모리 풀 반납
+            }
+            args.SetBuffer(null, 0, 0);
+        }
+        
+        private void EventArgsOnCompleted(object sender, SocketAsyncEventArgs e)
+        {
+            switch (e.LastOperation)
+            {
+                case SocketAsyncOperation.Accept:
+                    OnAccept(e);
+                    break;
+                case SocketAsyncOperation.Send:
+                    OnSend(e);
+                    break;
+                case SocketAsyncOperation.Receive:
+                    OnReceive(e);
+                    break;
+                case SocketAsyncOperation.Disconnect:
+                    OnDisconnect(e);
+                    break;
+                default:
+                    throw new Exception("잘못된 작업이 완료되었습니다.");
+            }
+        }
+
+        private void StartAccept()
+        {
+            if (IsRunning == false)
+                return;
+            SocketAsyncEventArgs acceptEventArgs = GyuNetPool.EventArgs.Pop();
+            var pending = serverSocket.AcceptAsync(acceptEventArgs);
+            if (!pending)
+            {
+                EventArgsOnCompleted(null, acceptEventArgs);
+            }
+        }
+
+        private void OnAccept(SocketAsyncEventArgs e)
+        {
+            if (IsRunning == false)
+                return;
+            if (e.SocketError == SocketError.Success)
+            {
+                var eventArgs = GyuNetPool.EventArgs.Pop();
+                var session = new Session();
+                session.Socket = e.AcceptSocket;
+                eventArgs.UserToken = session;
+                StartReceive(eventArgs);
+                StartAccept();
+                
+                Debug.Log($"새로운 클라이언트 접속: {session.Socket.RemoteEndPoint}");
+            }
+            else
+            {
+                Debug.LogError("OnAccept Error");
+            }
+        }
+
+        private void OnSend(SocketAsyncEventArgs e)
+        {
+            if (IsRunning == false)
+                return;
+        }
+        
+        private void StartReceive(SocketAsyncEventArgs e)
+        {
+            if (IsRunning == false)
+                return;
+            var session = e.UserToken as Session;
+            if (e.Buffer == null)
+            {
+                var buffer = GyuNetPool.Memories.Pop();
+                if (buffer != null)
+                    e.SetBuffer(buffer, 0, buffer.Length);
+                else
                 {
-                    Debug.LogError("TCP Listener AcceptTcpClientAsync 예외 발생");
-                    Debug.LogError(e);
-                    Stop();
+                    Debug.LogError("메모리 풀에서 메모리를 가져오지 못했습니다.");
+                    return;
                 }
+            }
+            var pending = session.Socket.ReceiveAsync(e);
+            if (!pending)
+            {
+                EventArgsOnCompleted(null, e);
+            }
+        }
+        
+        private void OnReceive(SocketAsyncEventArgs e)
+        {
+            if (IsRunning == false)
+                return;
+            if (e.SocketError == SocketError.Success && e.BytesTransferred > 0)
+            {
+                if (e.UserToken is Session session)
+                {
+                    session.OnPacketProcess(e.Buffer, e.BytesTransferred);
+                    StartReceive(e);
+                }
+            }
+            else
+            {
+                Debug.LogError($"OnReceive Error: {e.SocketError}");
+            }
+        }
+        
+        private void OnDisconnect(SocketAsyncEventArgs e)
+        {
+            if (IsRunning == false)
+                return;
+            if (e.SocketError == SocketError.Disconnecting && e.BytesTransferred > 0)
+            {
+                GyuNetPool.EventArgs.Push(e);
+            }
+            else
+            {
+                Debug.LogError("OnReceive Error");
             }
         }
     }

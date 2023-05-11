@@ -2,6 +2,8 @@
 {
     public static class Define
     {
+        public const int MAX_CONNECTION = 3000;
+        
         public const int TCP_PORT = 8000;
         public const int UDP_PORT = 8001;
         

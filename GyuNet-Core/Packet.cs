@@ -62,7 +62,7 @@ namespace GyuNet
             Array.Copy(headerBytes, 0, Buffer, 0, headerSize);
 
             var bodySize = sizeof(int);
-            var bodySizeBytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder(WriteOffset - ReadOffset));
+            var bodySizeBytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder(WriteOffset));
             Array.Copy(bodySizeBytes, 0, Buffer, headerSize, bodySize);
             Debug.Log($"header size: {headerSize}");
             Debug.Log($"body size: {bodySize}");

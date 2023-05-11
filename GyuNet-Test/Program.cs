@@ -31,7 +31,9 @@ namespace GyuNet_Test
             Debug.Log(packet.ReadOffset);
             Debug.Log(packet.WriteOffset);
 
-            client.GetStream().Write(packet.Buffer, 0, packet.WriteOffset);
+            client.Client.Send(packet.Buffer, packet.WriteOffset, SocketFlags.None);
+
+            await Task.Delay(10000);
 
             client.Close();
         }

@@ -4,7 +4,7 @@ using System.Net;
 using System.Net.Sockets;
 namespace GyuNet
 {
-    public class Session
+    public class UserSession
     {
         public Socket Socket;
         
@@ -35,6 +35,9 @@ namespace GyuNet
                     
                     Buffer.BlockCopy(buffer, bodySize, buffer, 0, offset - bodySize);
                     offset -= bodySize;
+
+                    Debug.Log("패킷 완성!");
+                    Debug.Log(packet.Header);
                 }
             }
         }

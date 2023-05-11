@@ -33,7 +33,7 @@ namespace GyuNet_Test
 
             client.Client.Send(packet.Buffer, packet.WriteOffset, SocketFlags.None);
 
-            await Task.Delay(10000);
+            await Task.Delay(3000);
 
             client.Close();
         }

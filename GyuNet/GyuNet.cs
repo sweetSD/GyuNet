@@ -22,8 +22,6 @@ namespace GyuNet
         private Socket serverSocket;
         private CancellationTokenSource serverTerminateCancellationTokenSource = null;
 
-        private readonly GyuNetMySQL mySql = new GyuNetMySQL(database:"ckgame", uid:"gyunet", password:"gyunet");
-
         #region Public Method
 
         public void Start()
@@ -76,7 +74,7 @@ namespace GyuNet
         {
             while (IsRunning)
             {
-                await mySql.ExecuteNonQuery("Select * from user");
+                await GyuNetMySQL.ExecuteNonQuery("Select * from user");
                 await Task.Delay(1000);
             }
         }

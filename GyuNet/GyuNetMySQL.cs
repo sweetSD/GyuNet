@@ -4,25 +4,20 @@ using System.Threading.Tasks;
 using MySqlConnector;
 namespace GyuNet
 {
-    public class GyuNetMySQL
+    public static class GyuNetMySQL
     {
-        private readonly MySqlConnectionStringBuilder connectionBuilder;
+        private static readonly MySqlConnectionStringBuilder ConnectionBuilder = new MySqlConnectionStringBuilder
+        {
+            UserID = Define.MYSQL_UID,
+            Password = Define.MYSQL_PASSWORD,
+            Server = Define.MYSQL_SERVER,
+            Database = Define.MYSQL_DATABASE
+        };
         
-        public GyuNetMySQL(string server = "localhost", string database = "game_db", string uid = "root", string password = "root")
+        public static async Task<bool> ExecuteNonQuery(string query)
         {
-            connectionBuilder = new MySqlConnectionStringBuilder
-            {
-                UserID = uid,
-                Password = password,
-                Server = server,
-                Database = database
-            };
-        }
-
-        public async Task<bool> ExecuteNonQuery(string query)
-        {
-            Debug.Log(connectionBuilder.ConnectionString);
-            using (var connection = new MySqlConnection(connectionBuilder.ConnectionString))
+            Debug.Log(ConnectionBuilder.ConnectionString);
+            using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
             {
                 await connection.OpenAsync();
                 if (connection.State == ConnectionState.Open)
@@ -34,9 +29,9 @@ namespace GyuNet
             return false;
         }
         
-        public async Task<MySqlDataReader> ExecuteReader(string query)
+        public static async Task<MySqlDataReader> ExecuteReader(string query)
         {
-            using (var connection = new MySqlConnection(connectionBuilder.ConnectionString))
+            using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
             {
                 await connection.OpenAsync();
                 if (connection.State == ConnectionState.Open)
@@ -52,6 +47,34 @@ namespace GyuNet
                 Debug.LogError($"MySQL 연결 실패: {connection.State}");
             }
             return null;
+        }
+
+        public static async Task<MySqlTransaction> BeginTransaction()
+        {
+            using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
+            {
+                await connection.OpenAsync();
+                if (connection.State == ConnectionState.Open)
+                {
+                    return await connection.BeginTransactionAsync();
+                }
+                Debug.LogError($"MySQL 연결 실패: {connection.State}");
+            }
+            return null;
+        }
+        
+        public static async Task Commit(MySqlTransaction transaction)
+        {
+            using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
+            {
+                await connection.OpenAsync();
+                if (connection.State == ConnectionState.Open)
+                {
+                    await transaction.CommitAsync();
+                    return;
+                }
+                Debug.LogError($"MySQL 연결 실패: {connection.State}");
+            }
         }
     }
 }

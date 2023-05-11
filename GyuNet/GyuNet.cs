@@ -12,7 +12,6 @@ namespace GyuNet
     interface INet
     {
         void Start();
-        void Update();
         void Stop();
     }
     
@@ -22,7 +21,11 @@ namespace GyuNet
         
         private Socket serverSocket;
         private CancellationTokenSource serverTerminateCancellationTokenSource = null;
-        
+
+        private readonly GyuNetMySQL mySql = new GyuNetMySQL(database:"ckgame", uid:"gyunet", password:"gyunet");
+
+        #region Public Method
+
         public void Start()
         {
             IsRunning = true;
@@ -36,14 +39,6 @@ namespace GyuNet
             Task.Run(Update, serverTerminateCancellationTokenSource.Token);
         }
 
-        public void Update()
-        {
-            while (IsRunning)
-            {
-                
-            }
-        }
-
         public void Stop()
         {
             if (IsRunning == false)
@@ -53,6 +48,10 @@ namespace GyuNet
             serverTerminateCancellationTokenSource?.Dispose();
             serverSocket?.Close();
         }
+
+        #endregion
+
+        #region Private Method
 
         private void InitListenSocket()
         {
@@ -73,6 +72,15 @@ namespace GyuNet
             StartAccept();
         }
         
+        private async void Update()
+        {
+            while (IsRunning)
+            {
+                await mySql.ExecuteNonQuery("Select * from user");
+                await Task.Delay(1000);
+            }
+        }
+        
         private void OnSpawnEventArgs(SocketAsyncEventArgs args)
         {
             args.Completed += EventArgsOnCompleted;
@@ -84,7 +92,6 @@ namespace GyuNet
             if (args.Buffer != null)
             {
                 GyuNetPool.Memories.Push(args.Buffer);
-                // 메모리 풀 반납
             }
             args.SetBuffer(null, 0, 0);
         }
@@ -114,6 +121,7 @@ namespace GyuNet
         {
             if (IsRunning == false)
                 return;
+            
             SocketAsyncEventArgs acceptEventArgs = GyuNetPool.EventArgs.Pop();
             var pending = serverSocket.AcceptAsync(acceptEventArgs);
             if (!pending)
@@ -126,34 +134,43 @@ namespace GyuNet
         {
             if (IsRunning == false)
                 return;
-            if (e.SocketError == SocketError.Success)
-            {
-                var eventArgs = GyuNetPool.EventArgs.Pop();
-                var session = new Session();
-                session.Socket = e.AcceptSocket;
-                eventArgs.UserToken = session;
-                StartReceive(eventArgs);
-                StartAccept();
-                
-                Debug.Log($"새로운 클라이언트 접속: {session.Socket.RemoteEndPoint}");
-            }
-            else
+            
+            if (e.SocketError != SocketError.Success)
             {
                 Debug.LogError("OnAccept Error");
+                return;
             }
+            
+            var eventArgs = GyuNetPool.EventArgs.Pop();
+            var session = GyuNetPool.Sessions.Pop();
+            session.Socket = e.AcceptSocket;
+            eventArgs.UserToken = session;
+            StartReceive(eventArgs);
+            StartAccept();
+            
+            Debug.Log($"새로운 클라이언트 접속: {session.Socket.RemoteEndPoint}");
         }
 
         private void OnSend(SocketAsyncEventArgs e)
         {
             if (IsRunning == false)
                 return;
+            
+            if (e.SocketError != SocketError.Success)
+            {
+                Debug.LogError("OnSend Error");
+                return;
+            }
         }
         
         private void StartReceive(SocketAsyncEventArgs e)
         {
             if (IsRunning == false)
                 return;
-            var session = e.UserToken as Session;
+            
+            var session = e.UserToken as UserSession;
+            if (session == null)
+                return;
             if (e.Buffer == null)
             {
                 var buffer = GyuNetPool.Memories.Pop();
@@ -176,9 +193,10 @@ namespace GyuNet
         {
             if (IsRunning == false)
                 return;
+            
             if (e.SocketError == SocketError.Success && e.BytesTransferred > 0)
             {
-                if (e.UserToken is Session session)
+                if (e.UserToken is UserSession session)
                 {
                     session.OnPacketProcess(e.Buffer, e.BytesTransferred);
                     StartReceive(e);
@@ -186,7 +204,15 @@ namespace GyuNet
             }
             else
             {
-                Debug.LogError($"OnReceive Error: {e.SocketError}");
+                if (e.BytesTransferred == 0)
+                {
+                    Debug.Log($"클라이언트 접속 종료: {(e.UserToken as UserSession)?.Socket.RemoteEndPoint}");
+                    OnDisconnect(e);
+                }
+                else
+                {
+                    Debug.LogError($"OnReceive Error: {e.SocketError}");
+                }
             }
         }
         
@@ -194,14 +220,10 @@ namespace GyuNet
         {
             if (IsRunning == false)
                 return;
-            if (e.SocketError == SocketError.Disconnecting && e.BytesTransferred > 0)
-            {
-                GyuNetPool.EventArgs.Push(e);
-            }
-            else
-            {
-                Debug.LogError("OnReceive Error");
-            }
+            GyuNetPool.Sessions.Push(e.UserToken as UserSession);
+            GyuNetPool.EventArgs.Push(e);
         }
+
+        #endregion
     }
 }

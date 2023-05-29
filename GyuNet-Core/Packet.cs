@@ -14,6 +14,8 @@ namespace GyuNet
     [Serializable]
     public class Packet
     {
+        public static readonly Pool<Packet> Pool = new Pool<Packet>();
+        
         public PacketHeader Header { get; set; }
         
         private int writeOffset;
@@ -32,6 +34,11 @@ namespace GyuNet
 
         public byte[] Buffer { get; private set; } = new byte[Define.PACKET_SIZE];
 
+        static Packet()
+        {
+            Pool.Spawned += (packet) => packet.ResetPosition();
+        }
+        
         public Packet()
         {
             ResetPosition();
@@ -49,7 +56,8 @@ namespace GyuNet
             // 버퍼가 지정될 경우 
             if (buf != null)
             {
-                System.Buffer.BlockCopy(buf, 0, Buffer, offset, size);
+                System.Buffer.BlockCopy(buf, offset, Buffer, WriteOffset, size);
+                WriteOffset += size;
             }
         }
 
@@ -64,8 +72,6 @@ namespace GyuNet
             var bodySize = sizeof(int);
             var bodySizeBytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder(WriteOffset));
             Array.Copy(bodySizeBytes, 0, Buffer, headerSize, bodySize);
-            Debug.Log($"header size: {headerSize}");
-            Debug.Log($"body size: {bodySize}");
         }
         
         public void Serialize(bool value)
@@ -151,6 +157,25 @@ namespace GyuNet
             Serialize(value.y);
             Serialize(value.z);
         }
+        
+        public void Serialize<T>(T value)
+        {
+            var size = Marshal.SizeOf<T>();
+            
+            if (CanWrite(size) == false)
+            {
+                Debug.LogError("버퍼에 공간이 부족합니다.");
+            }
+            
+            var bytes = new byte[size];
+            var ptr = Marshal.AllocHGlobal(size);
+            Marshal.StructureToPtr(value, ptr, true);
+            Marshal.Copy(ptr, bytes, 0, size);
+            Marshal.FreeHGlobal(ptr);
+
+            Array.Copy(bytes, 0, Buffer, WriteOffset, size);
+            WriteOffset += size;
+        }
 
         public bool DeserializeBool()
         {
@@ -225,6 +250,27 @@ namespace GyuNet
         public (float x, float y, float z) DeserializeVector3()
         {
             return (DeserializeFloat(), DeserializeFloat(), DeserializeFloat());
+        }
+
+        public bool Deserialize<T>(out T val)
+        {
+            var size = Marshal.SizeOf<T>();
+            
+            if (CanRead(size) == false)
+            {
+                Debug.LogError("버퍼의 모든 데이터를 읽었습니다.");
+                val = default;
+                return false;
+            }
+
+            var bytes = new byte[size];
+            var ptr = Marshal.AllocHGlobal(size);
+            Marshal.Copy(bytes, 0, ptr, size);
+            val = Marshal.PtrToStructure<T>(ptr);
+            Marshal.FreeHGlobal(ptr);
+
+            WriteOffset += size;
+            return true;
         }
 
         private bool CanWrite(int size)

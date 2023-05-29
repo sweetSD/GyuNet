@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.Threading;
 
 namespace GyuNet
@@ -6,8 +7,8 @@ namespace GyuNet
     public static class Debug
     {
         private static readonly object LockObj = new object();
-        private static string CurrentTime => DateTime.Now.ToString();
-        private static string DebugInfo => $"[{CurrentTime} | {ThreadId}, {GetThreadPoolInfo()}]";
+        private static string CurrentTime => DateTime.Now.ToString(CultureInfo.InvariantCulture);
+        private static string DebugInfo => $"[{CurrentTime} | {Thread.CurrentThread.IsThreadPoolThread} | {ThreadId}, {GetThreadPoolInfo()}]";
 
 
         private static string GetThreadPoolInfo()

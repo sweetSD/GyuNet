@@ -1,167 +1,102 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
-using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace GyuNet
 {
-    interface INet
+    abstract class GyuNet
     {
-        void Start();
-        void Stop();
-    }
-    
-    class TcpGyuNet : INet
-    {
-        public bool IsRunning { get; private set; } = false;
+        protected Socket Socket;
+        protected CancellationTokenSource serverTerminateCancellationTokenSource = null;
         
-        private Socket serverSocket;
-        private CancellationTokenSource serverTerminateCancellationTokenSource = null;
+        protected readonly List<UserSession> ConnectedSessions = new List<UserSession>();
+        protected readonly ConcurrentQueue<Packet> ReceivedPacketQueue = new ConcurrentQueue<Packet>();
+        
+        protected DateTime prevUpdateTime = DateTime.MinValue;
+        public float DeltaTime => (float)(DateTime.Now - prevUpdateTime).TotalSeconds;
 
-        #region Public Method
+        public event Action<UserSession> onAccepted;
+        public event Action<UserSession, Packet> onReceivedPacket;
+        public event Action<UserSession> onDisconnected;
+        
+        protected uint sessionID = 1;
+        
+        public bool IsRunning { get; private set; } = false;
 
-        public void Start()
+        public virtual void Start()
         {
-            IsRunning = true;
             serverTerminateCancellationTokenSource = new CancellationTokenSource();
-
-            GyuNetPool.EventArgs.Spawned += OnSpawnEventArgs;
-            GyuNetPool.EventArgs.Despawned += OnDespawnEventArgs;
-
-            InitListenSocket();
-
-            Task.Run(Update, serverTerminateCancellationTokenSource.Token);
+            IsRunning = true;
         }
-
-        public void Stop()
+        
+        public virtual void Stop()
         {
             if (IsRunning == false)
                 return;
             IsRunning = false;
+            
             serverTerminateCancellationTokenSource?.Cancel();
             serverTerminateCancellationTokenSource?.Dispose();
-            serverSocket?.Close();
-        }
-
-        #endregion
-
-        #region Private Method
-
-        private void InitListenSocket()
-        {
-            try
-            {
-                serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                serverSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                serverSocket.Bind(new IPEndPoint(IPAddress.Any, Define.TCP_PORT));
-                serverSocket.Listen(10);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError("TCP Listener Start 예외 발생");
-                Debug.LogError(e);
-                Stop();
-            }
-            
-            StartAccept();
+            Socket?.Close();
         }
         
-        private async void Update()
+        protected void Update()
         {
             while (IsRunning)
             {
-                await GyuNetMySQL.ExecuteNonQuery("Select * from user");
-                await Task.Delay(1000);
+                lock (ConnectedSessions)
+                {
+                    foreach(var session in ConnectedSessions)
+                    {
+                        while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
+                        {
+                            ReceivedPacketQueue.Enqueue(rPacket);
+                        }
+
+                        while (session.SendPacketQueue.TryDequeue(out var sPacket))
+                        {
+                            StartSend(session, sPacket);
+                        }
+                    }
+                }
+
+                while (ReceivedPacketQueue.TryDequeue(out var packet))
+                {
+                    onReceivedPacket?.Invoke(null, packet);
+                    Packet.Pool.Push(packet);
+                }
+
+                // Delta Time 구하기 위한 Update 시점 시간
+                prevUpdateTime = DateTime.Now;
             }
         }
         
-        private void OnSpawnEventArgs(SocketAsyncEventArgs args)
-        {
-            args.Completed += EventArgsOnCompleted;
-        }
-
-        private void OnDespawnEventArgs(SocketAsyncEventArgs args)
-        {
-            args.Completed -= EventArgsOnCompleted;
-            if (args.Buffer != null)
-            {
-                GyuNetPool.Memories.Push(args.Buffer);
-            }
-            args.SetBuffer(null, 0, 0);
-        }
-        
-        private void EventArgsOnCompleted(object sender, SocketAsyncEventArgs e)
-        {
-            switch (e.LastOperation)
-            {
-                case SocketAsyncOperation.Accept:
-                    OnAccept(e);
-                    break;
-                case SocketAsyncOperation.Send:
-                    OnSend(e);
-                    break;
-                case SocketAsyncOperation.Receive:
-                    OnReceive(e);
-                    break;
-                case SocketAsyncOperation.Disconnect:
-                    OnDisconnect(e);
-                    break;
-                default:
-                    throw new Exception("잘못된 작업이 완료되었습니다.");
-            }
-        }
-
-        private void StartAccept()
+        protected void StartAccept()
         {
             if (IsRunning == false)
                 return;
             
             SocketAsyncEventArgs acceptEventArgs = GyuNetPool.EventArgs.Pop();
-            var pending = serverSocket.AcceptAsync(acceptEventArgs);
+            var pending = Socket.AcceptAsync(acceptEventArgs);
             if (!pending)
             {
                 EventArgsOnCompleted(null, acceptEventArgs);
             }
         }
-
-        private void OnAccept(SocketAsyncEventArgs e)
+        
+        protected void StartSend(UserSession session, Packet packet)
         {
-            if (IsRunning == false)
+            if (session.Socket.Connected == false)
                 return;
-            
-            if (e.SocketError != SocketError.Success)
-            {
-                Debug.LogError("OnAccept Error");
-                return;
-            }
-            
             var eventArgs = GyuNetPool.EventArgs.Pop();
-            var session = GyuNetPool.Sessions.Pop();
-            session.Socket = e.AcceptSocket;
-            eventArgs.UserToken = session;
-            StartReceive(eventArgs);
-            StartAccept();
-            
-            Debug.Log($"새로운 클라이언트 접속: {session.Socket.RemoteEndPoint}");
-        }
-
-        private void OnSend(SocketAsyncEventArgs e)
-        {
-            if (IsRunning == false)
-                return;
-            
-            if (e.SocketError != SocketError.Success)
-            {
-                Debug.LogError("OnSend Error");
-                return;
-            }
+            eventArgs.UserToken = packet;
+            eventArgs.SetBuffer(packet.Buffer, 0, packet.WriteOffset);
+            session.Socket.SendAsync(eventArgs);
         }
         
-        private void StartReceive(SocketAsyncEventArgs e)
+        protected void StartReceive(SocketAsyncEventArgs e)
         {
             if (IsRunning == false)
                 return;
@@ -187,41 +122,54 @@ namespace GyuNet
             }
         }
         
-        private void OnReceive(SocketAsyncEventArgs e)
+        protected virtual void OnSpawnEventArgs(SocketAsyncEventArgs args)
         {
-            if (IsRunning == false)
-                return;
-            
-            if (e.SocketError == SocketError.Success && e.BytesTransferred > 0)
-            {
-                if (e.UserToken is UserSession session)
-                {
-                    session.OnPacketProcess(e.Buffer, e.BytesTransferred);
-                    StartReceive(e);
-                }
-            }
-            else
-            {
-                if (e.BytesTransferred == 0)
-                {
-                    Debug.Log($"클라이언트 접속 종료: {(e.UserToken as UserSession)?.Socket.RemoteEndPoint}");
-                    OnDisconnect(e);
-                }
-                else
-                {
-                    Debug.LogError($"OnReceive Error: {e.SocketError}");
-                }
-            }
-        }
-        
-        private void OnDisconnect(SocketAsyncEventArgs e)
-        {
-            if (IsRunning == false)
-                return;
-            GyuNetPool.Sessions.Push(e.UserToken as UserSession);
-            GyuNetPool.EventArgs.Push(e);
+            args.Completed += EventArgsOnCompleted;
         }
 
-        #endregion
+        protected virtual void OnDespawnEventArgs(SocketAsyncEventArgs args)
+        {
+            args.Completed -= EventArgsOnCompleted;
+            if (args.Buffer != null)
+            {
+                GyuNetPool.Memories.Push(args.Buffer);
+            }
+            args.SetBuffer(null, 0, 0);
+        }
+        
+        protected virtual void EventArgsOnCompleted(object sender, SocketAsyncEventArgs e)
+        {
+            switch (e.LastOperation)
+            {
+                case SocketAsyncOperation.Accept:
+                    OnAccept(e);
+                    break;
+                case SocketAsyncOperation.Send:
+                    OnSend(e);
+                    break;
+                case SocketAsyncOperation.Receive:
+                    OnReceive(e);
+                    break;
+                case SocketAsyncOperation.Disconnect:
+                    OnDisconnect(e);
+                    break;
+                default:
+                    throw new Exception("잘못된 작업이 완료되었습니다.");
+            }
+        }
+
+        protected virtual void OnAccept(SocketAsyncEventArgs e)
+        {
+            onAccepted?.Invoke(e.UserToken as UserSession);
+        }
+
+        protected abstract void OnSend(SocketAsyncEventArgs e);
+
+        protected abstract void OnReceive(SocketAsyncEventArgs e);
+
+        protected virtual void OnDisconnect(SocketAsyncEventArgs e)
+        {
+            onDisconnected?.Invoke(e.UserToken as UserSession);
+        }
     }
 }

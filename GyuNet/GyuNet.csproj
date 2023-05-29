@@ -33,6 +33,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="GyuNet-Core, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>..\GyuNet-Core\bin\Debug\net472\GyuNet-Core.dll</HintPath>
+    </Reference>
     <Reference Include="Microsoft.Extensions.Logging.Abstractions, Version=7.0.0.0, Culture=neutral, PublicKeyToken=adb9793829ddae60">
       <HintPath>..\packages\Microsoft.Extensions.Logging.Abstractions.7.0.0\lib\net462\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
       <Private>True</Private>
@@ -88,16 +91,11 @@
     <Compile Include="GyuNetPool.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TcpGyuNet.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
     <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\GyuNet-Core\GyuNet-Core.csproj">
-      <Project>{e88ff711-093f-4e93-af70-f6d6e8bb9b4a}</Project>
-      <Name>GyuNet-Core</Name>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

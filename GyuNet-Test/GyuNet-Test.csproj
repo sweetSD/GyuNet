@@ -33,6 +33,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="GyuNet-Core, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>..\GyuNet-Core\bin\Debug\net472\GyuNet-Core.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -48,12 +51,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\GyuNet-Core\GyuNet-Core.csproj">
-      <Project>{e88ff711-093f-4e93-af70-f6d6e8bb9b4a}</Project>
-      <Name>GyuNet-Core</Name>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

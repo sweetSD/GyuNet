@@ -11,7 +11,10 @@ namespace GyuNet
             UserID = Define.MYSQL_UID,
             Password = Define.MYSQL_PASSWORD,
             Server = Define.MYSQL_SERVER,
-            Database = Define.MYSQL_DATABASE
+            Database = Define.MYSQL_DATABASE,
+            Pooling = true,
+            MinimumPoolSize = 10,
+            MaximumPoolSize = 1000,
         };
         
         public static async Task<bool> ExecuteNonQuery(string query)

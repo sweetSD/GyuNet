@@ -8,18 +8,15 @@ namespace GyuNet
 {
     abstract class GyuNet
     {
-        protected Socket Socket;
-        protected CancellationTokenSource serverTerminateCancellationTokenSource = null;
+        protected Socket ServerSocket;
+        protected CancellationTokenSource ServerTerminateCancellationTokenSource = null;
         
-        protected readonly List<UserSession> ConnectedSessions = new List<UserSession>();
+        protected readonly ConcurrentDictionary<uint, Session> ConnectedSessions = new ConcurrentDictionary<uint, Session>();
         protected readonly ConcurrentQueue<Packet> ReceivedPacketQueue = new ConcurrentQueue<Packet>();
-        
-        protected DateTime prevUpdateTime = DateTime.MinValue;
-        public float DeltaTime => (float)(DateTime.Now - prevUpdateTime).TotalSeconds;
 
-        public event Action<UserSession> onAccepted;
-        public event Action<UserSession, Packet> onReceivedPacket;
-        public event Action<UserSession> onDisconnected;
+        public event Action<Session> onAccepted;
+        public event Action<Session, Packet> onReceivedPacket;
+        public event Action<Session> onDisconnected;
         
         protected uint sessionID = 1;
         
@@ -27,7 +24,7 @@ namespace GyuNet
 
         public virtual void Start()
         {
-            serverTerminateCancellationTokenSource = new CancellationTokenSource();
+            ServerTerminateCancellationTokenSource = new CancellationTokenSource();
             IsRunning = true;
         }
         
@@ -37,28 +34,20 @@ namespace GyuNet
                 return;
             IsRunning = false;
             
-            serverTerminateCancellationTokenSource?.Cancel();
-            serverTerminateCancellationTokenSource?.Dispose();
-            Socket?.Close();
+            ServerTerminateCancellationTokenSource?.Cancel();
+            ServerTerminateCancellationTokenSource?.Dispose();
+            ServerSocket?.Close();
         }
         
         protected void Update()
         {
             while (IsRunning)
             {
-                lock (ConnectedSessions)
+                foreach (var session in ConnectedSessions)
                 {
-                    foreach(var session in ConnectedSessions)
+                    while (session.Value.SendPacketQueue.TryDequeue(out var sPacket))
                     {
-                        while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
-                        {
-                            ReceivedPacketQueue.Enqueue(rPacket);
-                        }
-
-                        while (session.SendPacketQueue.TryDequeue(out var sPacket))
-                        {
-                            StartSend(session, sPacket);
-                        }
+                        StartSend(session.Value, sPacket);
                     }
                 }
 
@@ -67,9 +56,6 @@ namespace GyuNet
                     onReceivedPacket?.Invoke(null, packet);
                     Packet.Pool.Push(packet);
                 }
-
-                // Delta Time 구하기 위한 Update 시점 시간
-                prevUpdateTime = DateTime.Now;
             }
         }
         
@@ -79,48 +65,16 @@ namespace GyuNet
                 return;
             
             SocketAsyncEventArgs acceptEventArgs = GyuNetPool.EventArgs.Pop();
-            var pending = Socket.AcceptAsync(acceptEventArgs);
+            var pending = ServerSocket.AcceptAsync(acceptEventArgs);
             if (!pending)
             {
                 EventArgsOnCompleted(null, acceptEventArgs);
             }
         }
-        
-        protected void StartSend(UserSession session, Packet packet)
-        {
-            if (session.Socket.Connected == false)
-                return;
-            var eventArgs = GyuNetPool.EventArgs.Pop();
-            eventArgs.UserToken = packet;
-            eventArgs.SetBuffer(packet.Buffer, 0, packet.WriteOffset);
-            session.Socket.SendAsync(eventArgs);
-        }
-        
-        protected void StartReceive(SocketAsyncEventArgs e)
-        {
-            if (IsRunning == false)
-                return;
-            
-            var session = e.UserToken as UserSession;
-            if (session == null)
-                return;
-            if (e.Buffer == null)
-            {
-                var buffer = GyuNetPool.Memories.Pop();
-                if (buffer != null)
-                    e.SetBuffer(buffer, 0, buffer.Length);
-                else
-                {
-                    Debug.LogError("메모리 풀에서 메모리를 가져오지 못했습니다.");
-                    return;
-                }
-            }
-            var pending = session.Socket.ReceiveAsync(e);
-            if (!pending)
-            {
-                EventArgsOnCompleted(null, e);
-            }
-        }
+
+        protected abstract void StartSend(Session session, Packet packet);
+
+        protected abstract void StartReceive(SocketAsyncEventArgs e);
         
         protected virtual void OnSpawnEventArgs(SocketAsyncEventArgs args)
         {
@@ -160,7 +114,7 @@ namespace GyuNet
 
         protected virtual void OnAccept(SocketAsyncEventArgs e)
         {
-            onAccepted?.Invoke(e.UserToken as UserSession);
+            onAccepted?.Invoke(e.UserToken as Session);
         }
 
         protected abstract void OnSend(SocketAsyncEventArgs e);
@@ -169,7 +123,7 @@ namespace GyuNet
 
         protected virtual void OnDisconnect(SocketAsyncEventArgs e)
         {
-            onDisconnected?.Invoke(e.UserToken as UserSession);
+            onDisconnected?.Invoke(e.UserToken as Session);
         }
     }
 }

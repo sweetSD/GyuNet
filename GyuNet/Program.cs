@@ -16,7 +16,8 @@ namespace GyuNet
 
             tcpGyuNet.onAccepted += session =>
             {
-                Debug.Log($"새로운 클라이언트 접속: {session.Socket.RemoteEndPoint}");
+                var tcpSession = session as TCPSession;
+                Debug.Log($"새로운 클라이언트 접속: {tcpSession?.Socket.RemoteEndPoint}");
             };
 
             tcpGyuNet.onReceivedPacket += (session, packet) =>
@@ -33,7 +34,8 @@ namespace GyuNet
 
             tcpGyuNet.onDisconnected += session =>
             {
-                Debug.Log($"클라이언트 접속 종료: {session?.Socket.RemoteEndPoint}");
+                var tcpSession = session as TCPSession;
+                Debug.Log($"클라이언트 접속 종료: {tcpSession?.Socket.RemoteEndPoint}");
             };
             
             tcpGyuNet.Start();

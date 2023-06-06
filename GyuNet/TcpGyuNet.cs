@@ -21,7 +21,7 @@ namespace GyuNet
 
             InitListenSocket();
             
-            Task.Run(Update, serverTerminateCancellationTokenSource.Token);
+            Task.Run(Update, ServerTerminateCancellationTokenSource.Token);
         }
 
         #endregion
@@ -32,10 +32,10 @@ namespace GyuNet
         {
             try
             {
-                Socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                Socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                Socket.Bind(new IPEndPoint(IPAddress.Any, Define.TCP_PORT));
-                Socket.Listen(10);
+                ServerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                ServerSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                ServerSocket.Bind(new IPEndPoint(IPAddress.Any, Define.TCP_PORT));
+                ServerSocket.Listen(10);
             }
             catch (Exception e)
             {
@@ -47,28 +47,66 @@ namespace GyuNet
             StartAccept();
         }
 
-        protected override void OnAccept(SocketAsyncEventArgs e)
+        protected override void StartSend(Session session, Packet packet)
+        {
+            if (session is TCPSession tcpSession)
+            {
+                if (tcpSession.Socket.Connected == false)
+                    return;
+                var eventArgs = GyuNetPool.EventArgs.Pop();
+                eventArgs.UserToken = packet;
+                eventArgs.SetBuffer(packet.Buffer, 0, packet.WriteOffset);
+                tcpSession.Socket.SendAsync(eventArgs);
+            }
+        }
+
+        protected override void StartReceive(SocketAsyncEventArgs e)
         {
             if (IsRunning == false)
                 return;
             
+            var session = e.UserToken as TCPSession;
+            if (session == null)
+                return;
+            if (e.Buffer == null)
+            {
+                var buffer = GyuNetPool.Memories.Pop();
+                if (buffer != null)
+                    e.SetBuffer(buffer, 0, buffer.Length);
+                else
+                {
+                    Debug.LogError("메모리 풀에서 메모리를 가져오지 못했습니다.");
+                    return;
+                }
+            }
+            var pending = session.Socket.ReceiveAsync(e);
+            if (!pending)
+            {
+                EventArgsOnCompleted(null, e);
+            }
+        }
+
+        protected override void OnAccept(SocketAsyncEventArgs e)
+        {
+            if (IsRunning == false)
+                return;
+            StartAccept();
             if (e.SocketError != SocketError.Success)
             {
                 Debug.LogError("OnAccept Error");
                 return;
             }
             
-            var session = UserSession.Pool.Pop();
-            session.ID = unchecked(sessionID++);
+            var session = TCPSession.Pool.Pop();
+            while (ConnectedSessions.ContainsKey(sessionID)) sessionID++;
+            session.ID = sessionID;
             session.Socket = e.AcceptSocket;
 
             var eventArgs = GyuNetPool.EventArgs.Pop();
             eventArgs.UserToken = session;
+            ConnectedSessions.TryAdd(session.ID, session);
             base.OnAccept(eventArgs);
             
-            StartAccept();
-            lock (ConnectedSessions)
-                ConnectedSessions.Add(session);
             StartReceive(eventArgs);
         }
 
@@ -97,10 +135,14 @@ namespace GyuNet
             
             if (e.SocketError == SocketError.Success && e.BytesTransferred > 0)
             {
-                if (e.UserToken is UserSession session)
+                if (e.UserToken is TCPSession session)
                 {
-                    session.ReceivePacket(e.Buffer, e.BytesTransferred);
                     StartReceive(e);
+                    session.ReceiveData(e.Buffer, e.BytesTransferred);
+                    while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
+                    {
+                        ReceivedPacketQueue.Enqueue(rPacket);
+                    }
                 }
             }
             else
@@ -121,8 +163,8 @@ namespace GyuNet
             if (IsRunning == false)
                 return;
             base.OnDisconnect(e);
-            var session = e.UserToken as UserSession;
-            UserSession.Pool.Push(session);
+            var session = e.UserToken as TCPSession;
+            TCPSession.Pool.Push(session);
             GyuNetPool.EventArgs.Push(e);
         }
 

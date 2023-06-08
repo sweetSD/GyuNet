@@ -1,14 +1,10 @@
 ﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace GyuNet
 {
-    class TcpGyuNet : GyuNet
+    public class TcpGyuNet : GyuNet
     {
         #region Public Method
 
@@ -16,12 +12,7 @@ namespace GyuNet
         {
             base.Start();
 
-            GyuNetPool.EventArgs.Spawned += OnSpawnEventArgs;
-            GyuNetPool.EventArgs.Despawned += OnDespawnEventArgs;
-
             InitListenSocket();
-            
-            Task.Run(Update, ServerTerminateCancellationTokenSource.Token);
         }
 
         #endregion
@@ -47,7 +38,7 @@ namespace GyuNet
             StartAccept();
         }
 
-        protected override void StartSend(Session session, Packet packet)
+        public override void StartSend(Session session, Packet packet)
         {
             if (session is TCPSession tcpSession)
             {
@@ -56,7 +47,10 @@ namespace GyuNet
                 var eventArgs = GyuNetPool.EventArgs.Pop();
                 eventArgs.UserToken = packet;
                 eventArgs.SetBuffer(packet.Buffer, 0, packet.WriteOffset);
-                tcpSession.Socket.SendAsync(eventArgs);
+                if (!tcpSession.Socket.SendAsync(eventArgs))
+                {
+                    EventArgsOnCompleted(null, eventArgs);
+                }
             }
         }
 
@@ -98,7 +92,11 @@ namespace GyuNet
             }
             
             var session = TCPSession.Pool.Pop();
-            while (ConnectedSessions.ContainsKey(sessionID)) sessionID++;
+            while (ConnectedSessions.ContainsKey(sessionID))
+                unchecked
+                {
+                    sessionID++;
+                }
             session.ID = sessionID;
             session.Socket = e.AcceptSocket;
 
@@ -141,7 +139,7 @@ namespace GyuNet
                     session.ReceiveData(e.Buffer, e.BytesTransferred);
                     while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
                     {
-                        ReceivedPacketQueue.Enqueue(rPacket);
+                        OnReceivedPacket?.Invoke(this, session, rPacket);
                     }
                 }
             }

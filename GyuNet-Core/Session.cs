@@ -7,7 +7,7 @@ namespace GyuNet
 {
     public class Session
     {
-        public uint ID { get; set; }
+        public int ID { get; set; }
         public object UserData { get; set; }
 
         protected byte[] ReceiveBuffer { get; } = new byte[Define.BUFFER_SIZE];

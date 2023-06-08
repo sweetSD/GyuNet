@@ -3,22 +3,22 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace GyuNet
 {
-    abstract class GyuNet
+    public abstract class GyuNet
     {
         protected Socket ServerSocket;
         protected CancellationTokenSource ServerTerminateCancellationTokenSource = null;
         
-        protected readonly ConcurrentDictionary<uint, Session> ConnectedSessions = new ConcurrentDictionary<uint, Session>();
-        protected readonly ConcurrentQueue<Packet> ReceivedPacketQueue = new ConcurrentQueue<Packet>();
+        protected readonly ConcurrentDictionary<int, Session> ConnectedSessions = new ConcurrentDictionary<int, Session>();
 
-        public event Action<Session> onAccepted;
-        public event Action<Session, Packet> onReceivedPacket;
-        public event Action<Session> onDisconnected;
+        public Action<GyuNet, Session> OnAccepted;
+        public Action<GyuNet, Session, Packet> OnReceivedPacket;
+        public Action<GyuNet, Session> OnDisconnected;
         
-        protected uint sessionID = 1;
+        protected int sessionID = 1;
         
         public bool IsRunning { get; private set; } = false;
 
@@ -26,6 +26,11 @@ namespace GyuNet
         {
             ServerTerminateCancellationTokenSource = new CancellationTokenSource();
             IsRunning = true;
+            
+            GyuNetPool.EventArgs.Spawned += OnSpawnEventArgs;
+            GyuNetPool.EventArgs.Despawned += OnDespawnEventArgs;
+            
+            Task.Run(Update, ServerTerminateCancellationTokenSource.Token);
         }
         
         public virtual void Stop()
@@ -50,12 +55,6 @@ namespace GyuNet
                         StartSend(session.Value, sPacket);
                     }
                 }
-
-                while (ReceivedPacketQueue.TryDequeue(out var packet))
-                {
-                    onReceivedPacket?.Invoke(null, packet);
-                    Packet.Pool.Push(packet);
-                }
             }
         }
         
@@ -65,17 +64,12 @@ namespace GyuNet
                 return;
             
             SocketAsyncEventArgs acceptEventArgs = GyuNetPool.EventArgs.Pop();
-            var pending = ServerSocket.AcceptAsync(acceptEventArgs);
-            if (!pending)
+            if (!ServerSocket.AcceptAsync(acceptEventArgs))
             {
                 EventArgsOnCompleted(null, acceptEventArgs);
             }
         }
 
-        protected abstract void StartSend(Session session, Packet packet);
-
-        protected abstract void StartReceive(SocketAsyncEventArgs e);
-        
         protected virtual void OnSpawnEventArgs(SocketAsyncEventArgs args)
         {
             args.Completed += EventArgsOnCompleted;
@@ -88,6 +82,9 @@ namespace GyuNet
             {
                 GyuNetPool.Memories.Push(args.Buffer);
             }
+            args.RemoteEndPoint = null;
+            args.AcceptSocket = null;
+            args.UserToken = null;
             args.SetBuffer(null, 0, 0);
         }
         
@@ -99,9 +96,12 @@ namespace GyuNet
                     OnAccept(e);
                     break;
                 case SocketAsyncOperation.Send:
+                case SocketAsyncOperation.SendTo:
                     OnSend(e);
                     break;
                 case SocketAsyncOperation.Receive:
+                case SocketAsyncOperation.ReceiveFrom:
+                case SocketAsyncOperation.ReceiveMessageFrom:
                     OnReceive(e);
                     break;
                 case SocketAsyncOperation.Disconnect:
@@ -112,9 +112,23 @@ namespace GyuNet
             }
         }
 
+        public void StartSend(Packet packet, params int[] excludes)
+        {
+            foreach (var session in ConnectedSessions)
+            {
+                if (excludes != null && Array.IndexOf(excludes, session.Key) != -1)
+                    continue;
+                StartSend(session.Value, packet);
+            }
+        }
+        
+        public abstract void StartSend(Session session, Packet packet);
+
+        protected abstract void StartReceive(SocketAsyncEventArgs e);
+
         protected virtual void OnAccept(SocketAsyncEventArgs e)
         {
-            onAccepted?.Invoke(e.UserToken as Session);
+            OnAccepted?.Invoke(this, e.UserToken as Session);
         }
 
         protected abstract void OnSend(SocketAsyncEventArgs e);
@@ -123,7 +137,7 @@ namespace GyuNet
 
         protected virtual void OnDisconnect(SocketAsyncEventArgs e)
         {
-            onDisconnected?.Invoke(e.UserToken as Session);
+            OnDisconnected?.Invoke(this, e.UserToken as Session);
         }
     }
 }

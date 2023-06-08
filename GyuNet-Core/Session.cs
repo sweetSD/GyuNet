@@ -26,8 +26,8 @@ namespace GyuNet
             if (ReceiveOffset >= Define.HEADER_SIZE)
             {
                 // 헤더 확인
-                var header = (PacketHeader)IPAddress.NetworkToHostOrder(BitConverter.ToInt16(ReceiveBuffer, 0));
-                var bodySize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(ReceiveBuffer, sizeof(PacketHeader)));
+                var header = IPAddress.NetworkToHostOrder(BitConverter.ToInt16(ReceiveBuffer, 0));
+                var bodySize = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(ReceiveBuffer, sizeof(short)));
 
                 if (ReceiveOffset >= bodySize)
                 {

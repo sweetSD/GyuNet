@@ -9,7 +9,7 @@
         public const int UDP_PORT = 8001;
 
         // Buffer Settings ===========================
-        public const int HEADER_SIZE = sizeof(PacketHeader) + sizeof(int);
+        public const int HEADER_SIZE = sizeof(short) + sizeof(int);
         public const int PACKET_SIZE = 1024;
         public const int BUFFER_SIZE = PACKET_SIZE * 4;
         

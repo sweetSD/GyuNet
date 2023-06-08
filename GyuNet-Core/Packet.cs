@@ -5,18 +5,12 @@ using System.Text;
 
 namespace GyuNet
 {
-    public enum PacketHeader : short
-    {
-        PING = 0,
-        PONG,
-    }
-
     [Serializable]
     public class Packet
     {
         public static readonly Pool<Packet> Pool = new Pool<Packet>();
         
-        public PacketHeader Header { get; set; }
+        public short Header { get; set; }
         
         private int writeOffset;
         public int WriteOffset
@@ -62,11 +56,11 @@ namespace GyuNet
         }
 
         // 네트워크로 보내기 위한 정보를 저장합니다. 헤더만 바꿀 경우 Header 프로퍼티를 이용하세요.
-        public void SetHeader(PacketHeader header)
+        public void SetHeader(short header)
         {
             Header = header;
-            var headerSize = sizeof(PacketHeader);
-            var headerBytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder((short)header));
+            var headerSize = sizeof(short);
+            var headerBytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder(header));
             Array.Copy(headerBytes, 0, Buffer, 0, headerSize);
 
             var bodySize = sizeof(int);
@@ -112,6 +106,20 @@ namespace GyuNet
             }
             
             var bytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder(value));
+            Array.Copy(bytes, 0, Buffer, WriteOffset, size);
+            WriteOffset += size;
+        }
+        
+        public void Serialize(uint value)
+        {
+            var size = sizeof(int);
+            
+            if (CanWrite(size) == false)
+            {
+                Debug.LogError("버퍼에 공간이 부족합니다.");
+            }
+
+            var bytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder(unchecked((int)value)));
             Array.Copy(bytes, 0, Buffer, WriteOffset, size);
             WriteOffset += size;
         }
@@ -214,6 +222,19 @@ namespace GyuNet
             var value = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(Buffer, ReadOffset));
             ReadOffset += size;
             return value;
+        }
+        
+        public uint DeserializeUInt()
+        {
+            var size = sizeof(int);
+            if (CanRead(size) == false)
+            {
+                Debug.LogError("버퍼의 모든 데이터를 읽었습니다.");
+                return default;
+            }
+            var value = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(Buffer, ReadOffset));
+            ReadOffset += size;
+            return unchecked((uint)value);
         }
         
         public float DeserializeFloat()

@@ -11,6 +11,24 @@ namespace GyuNet
 {
     namespace Unity
     {
+        public enum PacketHeader : short
+        {
+            Ping = 0,
+            Pong,
+            RequestRoomJoin,
+            RoomJoin,
+            RequestRoomLeave,
+            RoomLeave,
+            RequestObjectSpawn,
+            ObjectSpawn,
+            RequestObjectSync,
+            ObjectSync,
+            RequestObjectDespawn,
+            ObjectDespawn,
+            Chat,
+            Rpc
+        }
+        
         class Room
         {
             public List<Session> Sessions = new List<Session>();
@@ -52,14 +70,14 @@ namespace GyuNet
 
             void OnReceivePacket(GyuNet net, Session session, Packet packet)
             {
-                switch (packet.Header)
+                switch ((PacketHeader)packet.Header)
                 {
                     case PacketHeader.Ping:
                         // 플레이어 접속. 플레이어 ID 부여 후 로비로 전환
                     {
                         var pongPacket = new Packet();
                         pongPacket.Serialize(session.ID);
-                        pongPacket.SetHeader(PacketHeader.Pong);
+                        pongPacket.SetHeader((short)PacketHeader.Pong);
                         net.StartSend(session, pongPacket);
                     }
                         break;
@@ -95,7 +113,7 @@ namespace GyuNet
                                 joinPacket.Serialize(roomSession.ID);
                             }
                         }
-                        joinPacket.SetHeader(PacketHeader.RoomJoin);
+                        joinPacket.SetHeader((short)PacketHeader.RoomJoin);
                         net.StartSend(session, joinPacket);
                     }
                         break;
@@ -113,7 +131,7 @@ namespace GyuNet
                         }
 
                         Packet leavePacket = new Packet();
-                        leavePacket.SetHeader(PacketHeader.RoomLeave);
+                        leavePacket.SetHeader((short)PacketHeader.RoomLeave);
                         net.StartSend(session, leavePacket);
                     }
                         break;
@@ -132,7 +150,7 @@ namespace GyuNet
                         spawnPacket.Serialize(packet.DeserializeVector3());
                         spawnPacket.Serialize(packet.DeserializeVector3());
                         spawnPacket.Serialize(packet.DeserializeInt());
-                        spawnPacket.SetHeader(PacketHeader.ObjectSpawn);
+                        spawnPacket.SetHeader((short)PacketHeader.ObjectSpawn);
                         net.StartSend(spawnPacket);
                     }
                         break;
@@ -141,7 +159,7 @@ namespace GyuNet
                     {
                         var syncPacket = new Packet();
                         syncPacket.CopyBuffer(packet.Buffer, Define.HEADER_SIZE, packet.WriteOffset - Define.HEADER_SIZE);
-                        syncPacket.SetHeader(PacketHeader.ObjectSync);
+                        syncPacket.SetHeader((short)PacketHeader.ObjectSync);
                         net.StartSend(syncPacket);
                     }
                         break;
@@ -150,7 +168,7 @@ namespace GyuNet
                     {
                         var despawnPacket = new Packet();
                         despawnPacket.Serialize(packet.DeserializeInt());
-                        despawnPacket.SetHeader(PacketHeader.ObjectDespawn);
+                        despawnPacket.SetHeader((short)PacketHeader.ObjectDespawn);
                         net.StartSend(despawnPacket);
                     }
                         break;
@@ -167,7 +185,7 @@ namespace GyuNet
                                     var chatPacket = new Packet();
                                     chatPacket.Serialize(session.ID);
                                     chatPacket.Serialize(packet.DeserializeString());
-                                    chatPacket.SetHeader(PacketHeader.Chat);
+                                    chatPacket.SetHeader((short)PacketHeader.Chat);
                                     net.StartSend(roomSession, chatPacket);
                                 }
                             }

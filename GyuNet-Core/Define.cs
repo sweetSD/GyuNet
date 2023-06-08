@@ -7,10 +7,6 @@
         
         public const int TCP_PORT = 8000;
         public const int UDP_PORT = 8001;
-        
-        // Network Settings ==========================
-        public const int NET_TICKRATE = 32;
-        public static int NET_TICKDELAY => 1000 / NET_TICKRATE;
 
         // Buffer Settings ===========================
         public const int HEADER_SIZE = sizeof(PacketHeader) + sizeof(int);

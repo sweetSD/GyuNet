@@ -12,7 +12,7 @@ namespace GyuNet
         
         private ConcurrentStack<T> objectStack = new ConcurrentStack<T>();
 
-        public Pool(int capacity = 10, bool shouldExpand = true, Action<T> spawned = null, Action<T> despawned = null)
+        public Pool(int capacity = 1000, bool shouldExpand = true, Action<T> spawned = null, Action<T> despawned = null)
         {
             Capacity = capacity;
             ShouldExpand = shouldExpand;

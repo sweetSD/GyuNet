@@ -20,12 +20,14 @@ namespace GyuNet
             RequestObjectDespawn,
             ObjectDespawn,
             Chat,
-            Rpc
+            Rpc,
+            RequestSetPlayerObject,
+            SetPlayerObject,
         }
         
         class Room
         {
-            public List<Session> Sessions = new List<Session>();
+            public List<Session> Sessions { get; } = new List<Session>();
         }
 
         class Unity
@@ -107,6 +109,7 @@ namespace GyuNet
 
             void OnDisconnect(GyuNet net, Session session)
             {
+                OnRequestRoomLeave(net, session, null);
                 var tcpSession = session as TCPSession;
                 Debug.Log($"클라이언트 접속 종료: {tcpSession?.Socket.RemoteEndPoint}");
             }
@@ -140,6 +143,11 @@ namespace GyuNet
                     joinPacket.Serialize(joinRoom.Sessions.Count);
                     foreach (var roomSession in joinRoom.Sessions)
                     {
+                        Packet joinAlertPacket = new Packet();
+                        joinAlertPacket.Serialize(roomSession.ID);
+                        joinAlertPacket.SetHeader((short)PacketHeader.RoomJoin);
+                        net.StartSend(roomSession, joinAlertPacket);
+                        
                         joinPacket.Serialize(roomSession.ID);
                     }
                 }
@@ -154,12 +162,16 @@ namespace GyuNet
                 {
                     lock (room.Sessions)
                     {
+                        foreach (var roomSession in room.Sessions)
+                        {
+                            Packet leavePacket = new Packet();
+                            leavePacket.Serialize(sessionId);
+                            leavePacket.SetHeader((short)PacketHeader.RoomLeave);
+                            net.StartSend(roomSession, leavePacket);
+                        }
                         room.Sessions.Remove(session);
                         SessionRoomPair.TryRemove(sessionId, out _);
                     }
-                    Packet leavePacket = new Packet();
-                    leavePacket.SetHeader((short)PacketHeader.RoomLeave);
-                    net.StartSend(session, leavePacket);
                 }
             }
 

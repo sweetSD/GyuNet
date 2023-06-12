@@ -95,6 +95,7 @@ namespace GyuNet
                 {
                     sessionID++;
                 }
+            session.Connected = true;
             session.ID = sessionID;
             session.EndPoint = e.RemoteEndPoint;
 
@@ -138,11 +139,16 @@ namespace GyuNet
                 
                 if (SessionEndPointDictionary.TryGetValue(hashCode, out var session))
                 {
-                    session.ReceiveData(e.Buffer, e.BytesTransferred);
-                    while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
+                    if (session.Connected)
                     {
-                        OnReceivedPacket?.Invoke(this, session, rPacket);
+                        session.ReceiveData(e.Buffer, e.BytesTransferred);
+                        while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
+                        {
+                            OnReceivedPacket?.Invoke(this, session, rPacket);
+                            Packet.Pool.Push(rPacket);
+                        }
                     }
+                    StartReceive(e);
                 }
             }
         }

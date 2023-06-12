@@ -29,8 +29,11 @@ namespace GyuNet
             
             GyuNetPool.EventArgs.Spawned += OnSpawnEventArgs;
             GyuNetPool.EventArgs.Despawned += OnDespawnEventArgs;
-            
-            Task.Run(Update, ServerTerminateCancellationTokenSource.Token);
+
+            for (int i = 0; i < Environment.ProcessorCount * 2; i++)
+            {
+                Task.Run(Update, ServerTerminateCancellationTokenSource.Token);
+            }
         }
         
         public virtual void Stop()
@@ -44,7 +47,7 @@ namespace GyuNet
             ServerSocket?.Close();
         }
         
-        protected void Update()
+        private async void Update()
         {
             while (IsRunning)
             {
@@ -53,8 +56,10 @@ namespace GyuNet
                     while (session.Value.SendPacketQueue.TryDequeue(out var sPacket))
                     {
                         StartSend(session.Value, sPacket);
+                        Packet.Pool.Push(sPacket);
                     }
                 }
+                await Task.Delay(100);
             }
         }
         
@@ -101,7 +106,6 @@ namespace GyuNet
                     break;
                 case SocketAsyncOperation.Receive:
                 case SocketAsyncOperation.ReceiveFrom:
-                case SocketAsyncOperation.ReceiveMessageFrom:
                     OnReceive(e);
                     break;
                 case SocketAsyncOperation.Disconnect:
@@ -137,7 +141,12 @@ namespace GyuNet
 
         protected virtual void OnDisconnect(SocketAsyncEventArgs e)
         {
-            OnDisconnected?.Invoke(this, e.UserToken as Session);
+            if ((e.UserToken is Session session))
+            {
+                session.Connected = false;
+                ConnectedSessions.TryRemove(session.ID, out _);
+                OnDisconnected?.Invoke(this, session);
+            }
         }
     }
 }

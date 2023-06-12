@@ -58,9 +58,8 @@ namespace GyuNet
         {
             if (IsRunning == false)
                 return;
-            
-            var session = e.UserToken as TCPSession;
-            if (session == null)
+
+            if (!(e.UserToken is TCPSession session))
                 return;
             if (e.Buffer == null)
             {
@@ -97,6 +96,7 @@ namespace GyuNet
                 {
                     sessionID++;
                 }
+            session.Connected = true;
             session.ID = sessionID;
             session.Socket = e.AcceptSocket;
 
@@ -106,6 +106,7 @@ namespace GyuNet
             base.OnAccept(eventArgs);
             
             StartReceive(eventArgs);
+            GyuNetPool.EventArgs.Push(e);
         }
 
         protected override void OnSend(SocketAsyncEventArgs e)
@@ -135,11 +136,16 @@ namespace GyuNet
             {
                 if (e.UserToken is TCPSession session)
                 {
-                    StartReceive(e);
+                    if (session.Connected == false)
+                    {
+                        return;
+                    }
                     session.ReceiveData(e.Buffer, e.BytesTransferred);
+                    StartReceive(e);
                     while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
                     {
                         OnReceivedPacket?.Invoke(this, session, rPacket);
+                        Packet.Pool.Push(rPacket);
                     }
                 }
             }

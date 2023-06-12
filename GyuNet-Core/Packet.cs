@@ -166,7 +166,7 @@ namespace GyuNet
             Serialize(value.z);
         }
         
-        public void Serialize<T>(T value)
+        public void Serialize<T>(T value) where T : struct
         {
             var size = Marshal.SizeOf<T>();
             
@@ -273,7 +273,7 @@ namespace GyuNet
             return (DeserializeFloat(), DeserializeFloat(), DeserializeFloat());
         }
 
-        public bool Deserialize<T>(out T val)
+        public bool Deserialize<T>(out T val) where T : struct
         {
             var size = Marshal.SizeOf<T>();
             

@@ -10,8 +10,8 @@
 
         // Buffer Settings ===========================
         public const int HEADER_SIZE = sizeof(short) + sizeof(int);
-        public const int PACKET_SIZE = 1024;
-        public const int BUFFER_SIZE = PACKET_SIZE * 4;
+        public const int PACKET_SIZE = 1024 * 4;
+        public const int BUFFER_SIZE = PACKET_SIZE * 16;
         
         // MySQL Settings ============================
         public const string MYSQL_SERVER = "localhost";

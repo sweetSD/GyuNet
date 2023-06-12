@@ -7,6 +7,7 @@ namespace GyuNet
 {
     public class Session
     {
+        public bool Connected { get; set; }
         public int ID { get; set; }
         public object UserData { get; set; }
 
@@ -23,7 +24,7 @@ namespace GyuNet
             Buffer.BlockCopy(buffer, 0, ReceiveBuffer, ReceiveOffset, count);
             ReceiveOffset += count;
 
-            if (ReceiveOffset >= Define.HEADER_SIZE)
+            while (ReceiveOffset >= Define.HEADER_SIZE)
             {
                 // 헤더 확인
                 var header = IPAddress.NetworkToHostOrder(BitConverter.ToInt16(ReceiveBuffer, 0));
@@ -41,6 +42,7 @@ namespace GyuNet
                     ReceiveOffset -= bodySize;
                     ReceivedPacketQueue.Enqueue(packet);
                 }
+                else break;
             }
         }
     }

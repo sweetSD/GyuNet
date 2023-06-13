@@ -74,7 +74,7 @@ namespace GyuNet
             
             if (CanWrite(size) == false)
             {
-                Debug.LogError("버퍼에 공간이 부족합니다.");
+                throw new Exception("버퍼에 공간이 부족합니다.");
             }
             
             var bytes = BitConverter.GetBytes(value);
@@ -88,7 +88,7 @@ namespace GyuNet
             
             if (CanWrite(size) == false)
             {
-                Debug.LogError("버퍼에 공간이 부족합니다.");
+                throw new Exception("버퍼에 공간이 부족합니다.");
             }
             
             var bytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder(value));
@@ -116,7 +116,7 @@ namespace GyuNet
             
             if (CanWrite(size) == false)
             {
-                Debug.LogError("버퍼에 공간이 부족합니다.");
+                throw new Exception("버퍼에 공간이 부족합니다.");
             }
 
             var bytes = BitConverter.GetBytes(IPAddress.HostToNetworkOrder(unchecked((int)value)));
@@ -130,7 +130,7 @@ namespace GyuNet
             
             if (CanWrite(size) == false)
             {
-                Debug.LogError("버퍼에 공간이 부족합니다.");
+                throw new Exception("버퍼에 공간이 부족합니다.");
             }
             
             var bytes = BitConverter.GetBytes(value);
@@ -146,7 +146,7 @@ namespace GyuNet
             
             if (CanWrite(size) == false)
             {
-                Debug.LogError("버퍼에 공간이 부족합니다.");
+                throw new Exception("버퍼에 공간이 부족합니다.");
             }
             
             Array.Copy(bytes, 0, Buffer, WriteOffset, size);
@@ -172,7 +172,7 @@ namespace GyuNet
             
             if (CanWrite(size) == false)
             {
-                Debug.LogError("버퍼에 공간이 부족합니다.");
+                throw new Exception("버퍼에 공간이 부족합니다.");
             }
             
             var bytes = new byte[size];
@@ -190,8 +190,8 @@ namespace GyuNet
             var size = sizeof(bool);
             if (CanRead(size) == false)
             {
-                Debug.LogError("버퍼의 모든 데이터를 읽었습니다.");
-                return default;
+                throw new Exception(
+                    $"버퍼의 모든 데이터를 읽었습니다. Read: {ReadOffset} | Write: {WriteOffset} | Deserialize Size: {size}");
             }
             var value = BitConverter.ToBoolean(Buffer, ReadOffset);
             ReadOffset += size;
@@ -203,8 +203,8 @@ namespace GyuNet
             var size = sizeof(short);
             if (CanRead(size) == false)
             {
-                Debug.LogError("버퍼의 모든 데이터를 읽었습니다.");
-                return default;
+                throw new Exception(
+                    $"버퍼의 모든 데이터를 읽었습니다. Read: {ReadOffset} | Write: {WriteOffset} | Deserialize Size: {size}");
             }
             var value = IPAddress.NetworkToHostOrder(BitConverter.ToInt16(Buffer, ReadOffset));
             ReadOffset += size;
@@ -216,8 +216,8 @@ namespace GyuNet
             var size = sizeof(int);
             if (CanRead(size) == false)
             {
-                Debug.LogError("버퍼의 모든 데이터를 읽었습니다.");
-                return default;
+                throw new Exception(
+                    $"버퍼의 모든 데이터를 읽었습니다. Read: {ReadOffset} | Write: {WriteOffset} | Deserialize Size: {size}");
             }
             var value = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(Buffer, ReadOffset));
             ReadOffset += size;
@@ -229,8 +229,8 @@ namespace GyuNet
             var size = sizeof(int);
             if (CanRead(size) == false)
             {
-                Debug.LogError("버퍼의 모든 데이터를 읽었습니다.");
-                return default;
+                throw new Exception(
+                    $"버퍼의 모든 데이터를 읽었습니다. Read: {ReadOffset} | Write: {WriteOffset} | Deserialize Size: {size}");
             }
             var value = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(Buffer, ReadOffset));
             ReadOffset += size;
@@ -242,8 +242,8 @@ namespace GyuNet
             var size = sizeof(float);
             if (CanRead(size) == false)
             {
-                Debug.LogError("버퍼의 모든 데이터를 읽었습니다.");
-                return default;
+                throw new Exception(
+                    $"버퍼의 모든 데이터를 읽었습니다. Read: {ReadOffset} | Write: {WriteOffset} | Deserialize Size: {size}");
             }
             var value = BitConverter.ToSingle(Buffer, ReadOffset);
             ReadOffset += size;
@@ -255,8 +255,8 @@ namespace GyuNet
             var size = DeserializeInt();
             if (CanRead(size) == false)
             {
-                Debug.LogError("버퍼의 모든 데이터를 읽었습니다.");
-                return string.Empty;
+                throw new Exception(
+                    $"버퍼의 모든 데이터를 읽었습니다. Read: {ReadOffset} | Write: {WriteOffset} | Deserialize Size: {size}");
             }
             var value = Encoding.UTF8.GetString(Buffer, ReadOffset, size);
             ReadOffset += size;
@@ -279,9 +279,8 @@ namespace GyuNet
             
             if (CanRead(size) == false)
             {
-                Debug.LogError("버퍼의 모든 데이터를 읽었습니다.");
-                val = default;
-                return false;
+                throw new Exception(
+                    $"버퍼의 모든 데이터를 읽었습니다. Read: {ReadOffset} | Write: {WriteOffset} | Deserialize Size: {size}");
             }
 
             var bytes = new byte[size];

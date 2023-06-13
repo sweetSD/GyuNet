@@ -33,7 +33,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="GyuNet-Core, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+    <Reference Include="GyuNet-Core">
       <HintPath>..\GyuNet-Core\bin\Debug\net472\GyuNet-Core.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.Extensions.Logging.Abstractions, Version=7.0.0.0, Culture=neutral, PublicKeyToken=adb9793829ddae60">

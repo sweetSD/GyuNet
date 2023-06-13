@@ -56,7 +56,6 @@ namespace GyuNet
                     while (session.Value.SendPacketQueue.TryDequeue(out var sPacket))
                     {
                         StartSend(session.Value, sPacket);
-                        Packet.Pool.Push(sPacket);
                     }
                 }
                 await Task.Delay(100);
@@ -143,9 +142,12 @@ namespace GyuNet
         {
             if ((e.UserToken is Session session))
             {
-                session.Connected = false;
-                ConnectedSessions.TryRemove(session.ID, out _);
-                OnDisconnected?.Invoke(this, session);
+                lock (session)
+                {
+                    session.Connected = false;
+                    ConnectedSessions.TryRemove(session.ID, out _);
+                    OnDisconnected?.Invoke(this, session);
+                }
             }
         }
     }

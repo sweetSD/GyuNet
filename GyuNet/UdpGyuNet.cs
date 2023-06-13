@@ -91,10 +91,9 @@ namespace GyuNet
             
             var session = UDPSession.Pool.Pop();
             while (ConnectedSessions.ContainsKey(sessionID))
-                unchecked
-                {
-                    sessionID++;
-                }
+            {
+                sessionID = unchecked(sessionID + 1);
+            }
             session.Connected = true;
             session.ID = sessionID;
             session.EndPoint = e.RemoteEndPoint;

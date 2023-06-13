@@ -40,16 +40,20 @@ namespace GyuNet
 
         public override void StartSend(Session session, Packet packet)
         {
-            if (session is TCPSession tcpSession)
+            lock (session)
             {
-                if (tcpSession.Socket.Connected == false)
-                    return;
-                var eventArgs = GyuNetPool.EventArgs.Pop();
-                eventArgs.UserToken = packet;
-                eventArgs.SetBuffer(packet.Buffer, 0, packet.WriteOffset);
-                if (!tcpSession.Socket.SendAsync(eventArgs))
+                if (session is TCPSession tcpSession)
                 {
-                    EventArgsOnCompleted(null, eventArgs);
+                    if (tcpSession.Socket.Connected == false)
+                        return;
+                    var eventArgs = GyuNetPool.EventArgs.Pop();
+                    eventArgs.UserToken = packet;
+                    eventArgs.SetBuffer(packet.Buffer, 0, packet.WriteOffset);
+                    Debug.Log($"{tcpSession.ID} >> New Packet Send: {packet.Header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
+                    if (!tcpSession.Socket.SendAsync(eventArgs))
+                    {
+                        EventArgsOnCompleted(null, eventArgs);
+                    }
                 }
             }
         }
@@ -92,10 +96,9 @@ namespace GyuNet
             
             var session = TCPSession.Pool.Pop();
             while (ConnectedSessions.ContainsKey(sessionID))
-                unchecked
-                {
-                    sessionID++;
-                }
+            {
+                sessionID = unchecked(sessionID + 1);
+            }
             session.Connected = true;
             session.ID = sessionID;
             session.Socket = e.AcceptSocket;
@@ -136,17 +139,19 @@ namespace GyuNet
             {
                 if (e.UserToken is TCPSession session)
                 {
-                    if (session.Connected == false)
+                    lock (session)
                     {
-                        return;
+                        if (session.Connected == false)
+                        {
+                            return;
+                        }
+                        session.ReceiveData(e.Buffer, e.BytesTransferred);
+                        while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
+                        {
+                            OnReceivedPacket?.Invoke(this, session, rPacket);
+                        }
                     }
-                    session.ReceiveData(e.Buffer, e.BytesTransferred);
                     StartReceive(e);
-                    while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
-                    {
-                        OnReceivedPacket?.Invoke(this, session, rPacket);
-                        Packet.Pool.Push(rPacket);
-                    }
                 }
             }
             else

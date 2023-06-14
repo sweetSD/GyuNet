@@ -25,10 +25,12 @@ namespace GyuNet
             Rpc,
             RequestSetPlayerObject,
             SetPlayerObject,
+            SetHostClient,
         }
         
         class Room
         {
+            public int HostClient { get; set; } = -1;
             public List<Session> Sessions { get; } = new List<Session>();
             public ConcurrentDictionary<int, Object> SpawnedObjects { get; } = new ConcurrentDictionary<int, Object>();
             public ConcurrentDictionary<int, int> PlayerObjects { get; } = new ConcurrentDictionary<int, int>();
@@ -96,7 +98,7 @@ namespace GyuNet
             void OnReceivePacket(GyuNet net, Session session, Packet packet)
             {
                 var header = (PacketHeader)packet.Header;
-                Debug.Log($"{session.ID} >> New Packet Received: {header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
+                //Debug.Log($"{session.ID} >> New Packet Received: {header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
                 switch (header)
                 {
                     case PacketHeader.Ping:
@@ -134,6 +136,7 @@ namespace GyuNet
                         break;
                     case PacketHeader.Rpc:
                         // Rpc.
+                        OnRpc(net, session, packet);
                         break;
                     case PacketHeader.RequestSetPlayerObject:
                         // 플레이어 오브젝트 설정.
@@ -185,7 +188,10 @@ namespace GyuNet
                 }
                 if (joinRoom == null)
                 {
-                    joinRoom = new Room();
+                    joinRoom = new Room()
+                    {
+                        HostClient = session.ID
+                    };
                     lock(Rooms)
                         Rooms.Add(joinRoom);
                 }
@@ -204,6 +210,9 @@ namespace GyuNet
                 Packet joinPacket = Packet.Pool.Pop();
                 lock (joinRoom)
                 {
+                    // 호스트 플레이어 ID 패킷 직렬화
+                    joinPacket.Serialize(joinRoom.HostClient);
+                    
                     // 기존 방 플레이어들 ID 패킷 직렬화
                     joinPacket.Serialize(joinRoom.Sessions.Count);
                     foreach (var roomSession in joinRoom.Sessions)
@@ -257,10 +266,21 @@ namespace GyuNet
                         }
                         room.Sessions.Remove(session);
                         SessionRoomPair.TryRemove(sessionId, out _);
-                        if (room.Sessions.Count == 0)
+                        if (room.Sessions.FindIndex(e => e.ID == room.HostClient) == -1)
                         {
-                            lock (Rooms)
-                                Rooms.Remove(room);
+                            if (room.Sessions.Count > 0)
+                            {
+                                room.HostClient = room.Sessions[0].ID;
+                                var hostPacket = Packet.Pool.Pop();
+                                hostPacket.Serialize(room.HostClient);
+                                hostPacket.SetHeader((short)PacketHeader.SetHostClient);
+                                SendPacketToRoom(net, room, hostPacket);
+                            }
+                            else
+                            {
+                                lock (Rooms)
+                                    Rooms.Remove(room);
+                            }
                         }
                     }
                 }
@@ -274,7 +294,6 @@ namespace GyuNet
                     var spawnPacket = Packet.Pool.Pop();
                     lock (room)
                     {
-                        Debug.Log(packet.WriteOffset);
                         var networkId = packet.DeserializeInt();
                         var prefab = packet.DeserializeString();
                         var position = packet.DeserializeVector3();
@@ -341,11 +360,28 @@ namespace GyuNet
                         chatPacket.Serialize(packet.DeserializeString());
                         chatPacket.SetHeader((short)PacketHeader.Chat);
                     }
-                    SendPacketToRoom(net, room, chatPacket, session.ID);
+                    SendPacketToRoom(net, room, chatPacket, sessionId);
                     Packet.Pool.Push(chatPacket);
                 }
             }
-            
+
+            void OnRpc(GyuNet net, Session session, Packet packet)
+            {
+                var sessionId = session.ID;
+                if (SessionRoomPair.TryGetValue(sessionId, out var room))
+                {
+                    var rpcPacket = Packet.Pool.Pop();
+                    lock (room)
+                    {
+                        rpcPacket.Serialize(packet.DeserializeInt());
+                        rpcPacket.Serialize(packet.DeserializeString());
+                        rpcPacket.SetHeader((short)PacketHeader.Rpc);
+                    }
+                    SendPacketToRoom(net, room, rpcPacket, sessionId);
+                    Packet.Pool.Push(rpcPacket);
+                }
+            }
+
             void OnRequestSetPlayerObject(GyuNet net, Session session, Packet packet)
             {
                 var sessionId = session.ID;

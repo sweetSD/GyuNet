@@ -51,12 +51,22 @@ namespace GyuNet
     {
         public static readonly Pool<TCPSession> Pool = new Pool<TCPSession>();
         
+        static TCPSession()
+        {
+            Pool.Spawned += (packet) => packet.Socket = null;
+        }
+        
         public Socket Socket;
     }
     
     public class UDPSession : Session
     {
         public static readonly Pool<UDPSession> Pool = new Pool<UDPSession>();
+        
+        static UDPSession()
+        {
+            Pool.Spawned += (packet) => packet.EndPoint = null;
+        }
         
         public EndPoint EndPoint;
     }

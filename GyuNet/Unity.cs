@@ -90,15 +90,15 @@ namespace GyuNet
             void OnAccepted(GyuNet net, Session session)
             {
                 if (session is TCPSession tcpSession)
-                    Debug.Log($"TCP 새로운 클라이언트 접속: {tcpSession.Socket.RemoteEndPoint}");
+                    Debug.Log($"TCP 새로운 클라이언트 접속: {session.ID}:{tcpSession.Socket.RemoteEndPoint}");
                 else if (session is UDPSession udpSession)
-                    Debug.Log($"UDP 새로운 클라이언트 접속: {udpSession.EndPoint}");
+                    Debug.Log($"UDP 새로운 클라이언트 접속: {session.ID}:{udpSession.EndPoint}");
             }
 
             void OnReceivePacket(GyuNet net, Session session, Packet packet)
             {
                 var header = (PacketHeader)packet.Header;
-                //Debug.Log($"{session.ID} >> New Packet Received: {header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
+                Debug.Log($"{session.ID} >> New Packet Received: {header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
                 switch (header)
                 {
                     case PacketHeader.Ping:
@@ -238,6 +238,7 @@ namespace GyuNet
                         Debug.Log(spawnedObject.Value.Position);
                         Debug.Log(spawnedObject.Value.Rotation);
                         Debug.Log(spawnedObject.Value.Authority);
+                        Debug.Log("<=============================>");
                         joinPacket.Serialize(spawnedObject.Value.NetworkID);
                         joinPacket.Serialize(spawnedObject.Value.Prefab);
                         joinPacket.Serialize(spawnedObject.Value.Position);
@@ -288,7 +289,6 @@ namespace GyuNet
 
             void OnRequestObjectSpawn(GyuNet net, Session session, Packet packet)
             {
-                Debug.Log(packet.WriteOffset);
                 if (SessionRoomPair.TryGetValue(session.ID, out var room))
                 {
                     var spawnPacket = Packet.Pool.Pop();
@@ -299,11 +299,13 @@ namespace GyuNet
                         var position = packet.DeserializeVector3();
                         var rotation = packet.DeserializeVector3();
                         var authority = packet.DeserializeInt();
+                        Debug.Log("<== Object Spawn ==>");
                         Debug.Log(networkId);
                         Debug.Log(prefab);
                         Debug.Log(position);
                         Debug.Log(rotation);
                         Debug.Log(authority);
+                        Debug.Log("<===================>");
                         spawnPacket.Serialize(networkId);
                         spawnPacket.Serialize(prefab);
                         spawnPacket.Serialize(position);
@@ -392,8 +394,10 @@ namespace GyuNet
                     {
                         var networkObjectId = packet.DeserializeInt();
                         var authority = packet.DeserializeInt();
+                        Debug.Log("<== Set Player Object ==>");
                         Debug.Log(networkObjectId);
                         Debug.Log(authority);
+                        Debug.Log("<=======================>");
                         room.PlayerObjects.AddOrUpdate(authority, networkObjectId, (_, __) => networkObjectId);
                         setPlayerPacket.Serialize(networkObjectId);
                         setPlayerPacket.Serialize(authority);

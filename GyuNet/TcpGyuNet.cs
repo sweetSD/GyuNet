@@ -49,7 +49,7 @@ namespace GyuNet
                     var eventArgs = GyuNetPool.EventArgs.Pop();
                     eventArgs.UserToken = packet;
                     eventArgs.SetBuffer(packet.Buffer, 0, packet.WriteOffset);
-                    Debug.Log($"{tcpSession.ID} >> New Packet Send: {packet.Header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
+                    Debug.Log($"{session.ID} >> New Packet Send: {packet.Header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
                     if (!tcpSession.Socket.SendAsync(eventArgs))
                     {
                         EventArgsOnCompleted(null, eventArgs);
@@ -95,19 +95,21 @@ namespace GyuNet
             }
             
             var session = TCPSession.Pool.Pop();
-            while (ConnectedSessions.ContainsKey(sessionID))
+            lock (ConnectedSessions)
             {
-                sessionID = unchecked(sessionID + 1);
+                while (ConnectedSessions.ContainsKey(sessionID))
+                {
+                    sessionID = unchecked(sessionID + 1);
+                }
+                session.Connected = true;
+                session.ID = sessionID;
+                session.Socket = e.AcceptSocket;
+                ConnectedSessions.AddOrUpdate(session.ID, session, (_, __) => session);
             }
-            session.Connected = true;
-            session.ID = sessionID;
-            session.Socket = e.AcceptSocket;
-
+            
             var eventArgs = GyuNetPool.EventArgs.Pop();
             eventArgs.UserToken = session;
-            ConnectedSessions.TryAdd(session.ID, session);
             base.OnAccept(eventArgs);
-            
             StartReceive(eventArgs);
             GyuNetPool.EventArgs.Push(e);
         }

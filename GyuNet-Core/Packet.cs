@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -9,6 +10,19 @@ namespace GyuNet
     public class Packet
     {
         public static readonly Pool<Packet> Pool = new Pool<Packet>();
+
+        public enum DataType : short
+        {
+            Bool = 0,
+            Short,
+            Int,
+            UInt,
+            Float,
+            String,
+            Vector2,
+            Vector3,
+            Struct,
+        }
         
         public short Header { get; set; }
         
@@ -165,6 +179,63 @@ namespace GyuNet
             Serialize(value.y);
             Serialize(value.z);
         }
+
+        public void Serialize(object value)
+        {
+            switch (value)
+            {
+                case bool castValue:
+                {
+                    Serialize((short)DataType.Bool);
+                    Serialize(castValue);
+                    break;
+                }
+                case short castValue:
+                {
+                    Serialize((short)DataType.Short);
+                    Serialize(castValue);
+                    break;
+                }
+                case int castValue:
+                {
+                    Serialize((short)DataType.Int);
+                    Serialize(castValue);
+                    break;
+                }
+                case uint castValue:
+                {
+                    Serialize((short)DataType.UInt);
+                    Serialize(castValue);
+                    break;
+                }
+                case float castValue:
+                {
+                    Serialize((short)DataType.Float);
+                    Serialize(castValue);
+                    break;
+                }
+                case string castValue:
+                {
+                    Serialize((short)DataType.String);
+                    Serialize(castValue);
+                    break;
+                }
+                case Tuple<float, float> castValue:
+                {
+                    Serialize((short)DataType.Vector2);
+                    Serialize((castValue.Item1, castValue.Item2));
+                    break;
+                }
+                case Tuple<float, float, float> castValue:
+                {
+                    Serialize((short)DataType.Vector3);
+                    Serialize((castValue.Item1, castValue.Item2, castValue.Item3));
+                    break;
+                }
+                default:
+                    throw new Exception("해당 데이터를 직렬화할 수 없습니다.");
+            }
+        }
         
         public void Serialize<T>(T value) where T : struct
         {
@@ -180,7 +251,7 @@ namespace GyuNet
             Marshal.StructureToPtr(value, ptr, true);
             Marshal.Copy(ptr, bytes, 0, size);
             Marshal.FreeHGlobal(ptr);
-
+        
             Array.Copy(bytes, 0, Buffer, WriteOffset, size);
             WriteOffset += size;
         }
@@ -273,6 +344,58 @@ namespace GyuNet
             return (DeserializeFloat(), DeserializeFloat(), DeserializeFloat());
         }
 
+        public (DataType, object) DeserializeOne()
+        {
+            var type = (DataType)DeserializeShort();
+            object value = null;
+            switch (type)
+            {
+                case DataType.Bool:
+                {
+                    value = DeserializeBool();
+                    break;
+                }
+                case DataType.Short:
+                {
+                    value = DeserializeShort();
+                    break;
+                }
+                case DataType.Int:
+                {
+                    value = DeserializeInt();
+                    break;
+                }
+                case DataType.UInt:
+                {
+                    value = DeserializeUInt();
+                    break;
+                }
+                case DataType.Float:
+                {
+                    value = DeserializeFloat();
+                    break;
+                }
+                case DataType.String:
+                {
+                    value = DeserializeString();
+                    break;
+                }
+                case DataType.Vector2:
+                {
+                    value = DeserializeVector2();
+                    break;
+                }
+                case DataType.Vector3:
+                {
+                    value = DeserializeVector3();
+                    break;
+                }
+                default:
+                    throw new Exception("해당 데이터를 역직렬화할 수 없습니다.");
+            }
+            return (type, value);
+        }
+
         public bool Deserialize<T>(out T val) where T : struct
         {
             var size = Marshal.SizeOf<T>();
@@ -293,12 +416,12 @@ namespace GyuNet
             return true;
         }
 
-        private bool CanWrite(int size)
+        public bool CanWrite(int size)
         {
             return WriteOffset + size <= Define.PACKET_SIZE;
         }
         
-        private bool CanRead(int size)
+        public bool CanRead(int size)
         {
             return ReadOffset + size <= WriteOffset;
         }

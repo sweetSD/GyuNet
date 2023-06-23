@@ -373,15 +373,8 @@ namespace GyuNet
                 var sessionId = session.ID;
                 if (SessionRoomPair.TryGetValue(sessionId, out var room))
                 {
-                    var rpcPacket = Packet.Pool.Pop();
-                    lock (room)
-                    {
-                        rpcPacket.Serialize(packet.DeserializeInt());
-                        rpcPacket.Serialize(packet.DeserializeString());
-                        rpcPacket.SetHeader((short)PacketHeader.Rpc);
-                    }
-                    SendPacketToRoom(net, room, rpcPacket, sessionId);
-                    Packet.Pool.Push(rpcPacket);
+                    packet.SetHeader((short)PacketHeader.Rpc);
+                    SendPacketToRoom(net, room, packet, sessionId);
                 }
             }
 

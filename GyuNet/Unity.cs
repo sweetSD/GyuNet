@@ -1,16 +1,102 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
+using System.Threading.Tasks;
 
 namespace GyuNet
 {
+    class CommonDatabase
+    {
+        public static async Task<bool> CheckAccount(string name, string pw = null)
+        {
+            var duplicated = false;
+            await GyuNetMySQL.ExecuteReader($"SELECT * FROM user WHERE Name = '{name}' {(string.IsNullOrEmpty(pw) ? string.Empty : $"AND Password = '{pw}'")}",
+                reader =>
+                {
+                    duplicated = reader.HasRows;
+                    reader.Close();
+                });
+            return duplicated;
+        }
+
+        // 새로운 유저 정보를 만듭니다.
+        public static async Task CreateNewUser(string name, string pw)
+        {
+            await GyuNetMySQL.ExecuteNonQuery($"INSERT INTO user (Name, Password) VALUES ('{name}', '{pw}')");
+        }
+
+        // 새로운 게임 기록 정보를 만듭니다.
+        public static async Task CreateNewRecord(string userName, int killCount)
+        {
+            await GyuNetMySQL.ExecuteReader($"SELECT ID FROM user WHERE Name = '{userName}'",
+                async reader => {
+                    if (reader.HasRows)
+                    {
+                        reader.Read();
+                        var id = reader["id"];
+                        reader.Close();
+                        await GyuNetMySQL.ExecuteNonQuery($"INSERT INTO fps_record (UserId, KillCount) VALUES ({id}, {killCount})");
+                    }
+                });
+        }
+
+        // 랭킹 데이터를 가져옵니다.
+        public static async Task<List<(int?, string, int, string)>> GetRank()
+        {
+            return await GetRecord_Internal(@"
+                SELECT u.ID, u.Name, r.KillCount
+                FROM user u
+                JOIN(
+                  SELECT UserID, SUM(KillCount) AS KillCount
+                  FROM fps_record
+                  GROUP BY UserID
+                ) r ON u.ID = r.UserID
+                ORDER BY r.KillCount DESC; ", true);
+        }
+
+        // 개인 기록 데이터를 가져옵니다.
+        public static async Task<List<(int?, string, int, string)>> GetRecord(string name)
+        {
+            return await GetRecord_Internal($@"
+                SELECT user.Name, fps_record.KillCount, fps_record.CreatedAt 
+                FROM user 
+                JOIN fps_record 
+                ON user.id = fps_record.userid 
+                WHERE user.name = '{name}';", false);
+        }
+
+        // 랭킹과 기록은 구문이 비슷하기 때문에 내부 함수 제작
+        private static async Task<List<(int?, string, int, string)>> GetRecord_Internal(string query, bool isRankData)
+        {
+            List<(int?, string, int, string)> rankData = new List<(int?, string, int, string)>();
+            int index = 1;
+            await GyuNetMySQL.ExecuteReader(query,
+                reader => {
+                    while (reader.Read() && index <= 100)
+                    {
+                        string data = string.Empty;
+                        if (isRankData)
+                            rankData.Add((index++, reader["Name"].ToString(), reader.GetInt32("KillCount"), string.Empty));
+                        else
+                            rankData.Add((null, reader["Name"].ToString(), reader.GetInt32("KillCount"), reader.GetDateTime("CreatedAt").ToString("yyyy-MM-dd_HH+mm+ss")));
+                    }
+                });
+            return rankData;
+        }
+    }
+    
     namespace Unity
     {
         public enum PacketHeader : short
         {
             Ping = 0,
             Pong,
+            RequestSignIn,
+            SignInAllowed,
+            SignInDenied,
+            RequestSignUp,
+            SignUpAllowed,
+            SignUpDenied,
             RequestRoomJoin,
             RoomJoin,
             RequestRoomLeave,
@@ -26,16 +112,23 @@ namespace GyuNet
             RequestSetPlayerObject,
             SetPlayerObject,
             SetHostClient,
+            RequestRank,
+            Rank,
+            RequestRecord,
+            Record,
+            RequestCreateRecord,
+            RequestGameEnd,
         }
         
         class Room
         {
+            public string CurrentScene;
             public int HostClient { get; set; } = -1;
             public List<Session> Sessions { get; } = new List<Session>();
             public ConcurrentDictionary<int, Object> SpawnedObjects { get; } = new ConcurrentDictionary<int, Object>();
             public ConcurrentDictionary<int, int> PlayerObjects { get; } = new ConcurrentDictionary<int, int>();
         }
-
+    
         class Object
         {
             public int NetworkID;
@@ -98,7 +191,7 @@ namespace GyuNet
             void OnReceivePacket(GyuNet net, Session session, Packet packet)
             {
                 var header = (PacketHeader)packet.Header;
-                Debug.Log($"{session.ID} >> New Packet Received: {header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
+                //Debug.Log($"{session.ID} >> New Packet Received: {header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
                 switch (header)
                 {
                     case PacketHeader.Ping:
@@ -110,6 +203,12 @@ namespace GyuNet
                         net.StartSend(session, pongPacket);
                         break;
                     }
+                    case PacketHeader.RequestSignIn:
+                        OnRequestSignIn(net, session, packet);
+                        break;
+                    case PacketHeader.RequestSignUp:
+                        OnRequestSignUp(net, session, packet);
+                        break;
                     case PacketHeader.RequestRoomJoin:
                         // 플레이어 방 입장.
                         OnRequestRoomJoin(net, session, packet);
@@ -142,6 +241,18 @@ namespace GyuNet
                         // 플레이어 오브젝트 설정.
                         OnRequestSetPlayerObject(net, session, packet);
                         break;
+                    case PacketHeader.RequestRank:
+                        OnRequestRank(net, session, packet);
+                        break;
+                    case PacketHeader.RequestRecord:
+                        OnRequestRecord(net, session, packet);
+                        break;
+                    case PacketHeader.RequestCreateRecord:
+                        OnRequestCreateRecord(net, session, packet);
+                        break;
+                    case PacketHeader.RequestGameEnd:
+                        OnRequestGameEnd(net, session, packet);
+                        break;
                 }
                 Packet.Pool.Push(packet);
             }
@@ -170,6 +281,53 @@ namespace GyuNet
                     copyPacket.CopyBuffer(packet.Buffer, Define.HEADER_SIZE, packet.WriteOffset - Define.HEADER_SIZE);
                     copyPacket.SetHeader(packet.Header);
                     roomSession.SendPacketQueue.Enqueue(copyPacket);
+                }
+            }
+
+            async void OnRequestSignIn(GyuNet net, Session session, Packet packet)
+            {
+                var name = packet.DeserializeString();
+                var pw = packet.DeserializeString();
+                var duplicated = await CommonDatabase.CheckAccount(name, pw);
+                
+                if (duplicated)
+                {
+                    session.Name = name;
+                    session.AccessAllowed = true;
+                    
+                    var allowPacket = Packet.Pool.Pop();
+                    allowPacket.SetHeader((short)PacketHeader.SignInAllowed);
+                    session.SendPacketQueue.Enqueue(allowPacket);
+                }
+                else
+                {
+                    var deniedPacket = Packet.Pool.Pop();
+                    deniedPacket.SetHeader((short)PacketHeader.SignInDenied);
+                    session.SendPacketQueue.Enqueue(deniedPacket);
+                }
+            }
+            
+            async void OnRequestSignUp(GyuNet net, Session session, Packet packet)
+            {
+                var name = packet.DeserializeString();
+                var pw = packet.DeserializeString();
+                var duplicated = await CommonDatabase.CheckAccount(name, pw);
+                
+                if (duplicated)
+                {
+                    var deniedPacket = Packet.Pool.Pop();
+                    deniedPacket.SetHeader((short)PacketHeader.SignUpDenied);
+                    session.SendPacketQueue.Enqueue(deniedPacket);
+                }
+                else
+                {
+                    await CommonDatabase.CreateNewUser(name, pw);
+                    session.Name = name;
+                    session.AccessAllowed = true;
+                    
+                    var allowPacket = Packet.Pool.Pop();
+                    allowPacket.SetHeader((short)PacketHeader.SignUpAllowed);
+                    session.SendPacketQueue.Enqueue(allowPacket);
                 }
             }
 
@@ -208,6 +366,7 @@ namespace GyuNet
                     // 기존 방 플레이어들에게 새 플레이어 입장 패킷 전송
                     Packet joinAlertPacket = Packet.Pool.Pop();
                     joinAlertPacket.Serialize(session.ID);
+                    joinAlertPacket.Serialize(session.Name);
                     joinAlertPacket.SetHeader((short)PacketHeader.RoomJoin);
                     SendPacketToRoomNoLock(net, joinRoom, joinAlertPacket, session.ID);
 
@@ -220,6 +379,7 @@ namespace GyuNet
                     foreach (var roomSession in joinRoom.Sessions)
                     {
                         joinPacket.Serialize(roomSession.ID);
+                        joinPacket.Serialize(roomSession.Name);
                     }
 
                     // 설정된 플레이어 오브젝트 패킷 직렬화
@@ -259,13 +419,11 @@ namespace GyuNet
                 {
                     lock (room)
                     {
-                        foreach (var roomSession in room.Sessions)
-                        {
-                            Packet leavePacket = Packet.Pool.Pop();
-                            leavePacket.Serialize(sessionId);
-                            leavePacket.SetHeader((short)PacketHeader.RoomLeave);
-                            net.StartSend(roomSession, leavePacket);
-                        }
+                        Packet leavePacket = Packet.Pool.Pop();
+                        leavePacket.Serialize(sessionId);
+                        leavePacket.SetHeader((short)PacketHeader.RoomLeave);
+                        SendPacketToRoomNoLock(net, room, leavePacket);
+                        
                         room.Sessions.Remove(session);
                         SessionRoomPair.TryRemove(sessionId, out _);
                         if (room.Sessions.FindIndex(e => e.ID == room.HostClient) == -1)
@@ -399,6 +557,68 @@ namespace GyuNet
                         SendPacketToRoomNoLock(net, room, setPlayerPacket, session.ID);
                     }
                     Packet.Pool.Push(setPlayerPacket);
+                }
+            }
+
+            async void OnRequestRank(GyuNet net, Session session, Packet packet)
+            {
+                var rankData = await CommonDatabase.GetRank();
+                var sendPacket = Packet.Pool.Pop();
+
+                sendPacket.Serialize(rankData.Count);
+                foreach (var data in rankData)
+                {
+                    sendPacket.Serialize(data.Item1 ?? 0);
+                    sendPacket.Serialize(data.Item2);
+                    sendPacket.Serialize(data.Item3);
+                    sendPacket.Serialize(data.Item4);
+                }
+                sendPacket.SetHeader((short)PacketHeader.Rank);
+                session.SendPacketQueue.Enqueue(sendPacket);
+            }
+            
+            async void OnRequestRecord(GyuNet net, Session session, Packet packet)
+            {
+                var rankData = await CommonDatabase.GetRecord(session.Name);
+                var sendPacket = Packet.Pool.Pop();
+
+                sendPacket.Serialize(rankData.Count);
+                foreach (var data in rankData)
+                {
+                    sendPacket.Serialize(data.Item1 ?? 0);
+                    sendPacket.Serialize(data.Item2);
+                    sendPacket.Serialize(data.Item3);
+                    sendPacket.Serialize(data.Item4);
+                }
+                sendPacket.SetHeader((short)PacketHeader.Record);
+                session.SendPacketQueue.Enqueue(sendPacket);
+            }
+            
+            async void OnRequestCreateRecord(GyuNet net, Session session, Packet packet)
+            {
+                var killCount = packet.DeserializeInt();
+                await CommonDatabase.CreateNewRecord(session.Name, killCount);
+            }
+
+            void OnRequestGameEnd(GyuNet net, Session session, Packet packet)
+            {
+                var sessionId = session.ID;
+                if (SessionRoomPair.TryGetValue(sessionId, out var room))
+                {
+                    lock (room)
+                    {
+                        foreach (var roomSession in room.Sessions)
+                        {
+                            Packet leavePacket = Packet.Pool.Pop();
+                            leavePacket.Serialize(roomSession.ID);
+                            leavePacket.SetHeader((short)PacketHeader.RoomLeave);
+                            roomSession.SendPacketQueue.Enqueue(leavePacket);
+
+                            SessionRoomPair.TryRemove(roomSession.ID, out _);
+                            lock (Rooms)
+                                Rooms.Remove(room);
+                        }
+                    }
                 }
             }
         }

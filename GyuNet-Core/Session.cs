@@ -8,8 +8,9 @@ namespace GyuNet
     public class Session
     {
         public bool Connected { get; set; }
+        public bool AccessAllowed { get; set; }
         public int ID { get; set; }
-        public object UserData { get; set; }
+        public string Name { get; set; }
 
         protected byte[] ReceiveBuffer { get; } = new byte[Define.BUFFER_SIZE];
         protected int ReceiveOffset { get; set; } = 0;

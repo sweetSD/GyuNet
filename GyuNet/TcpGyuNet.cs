@@ -49,7 +49,7 @@ namespace GyuNet
                     var eventArgs = GyuNetPool.EventArgs.Pop();
                     eventArgs.UserToken = packet;
                     eventArgs.SetBuffer(packet.Buffer, 0, packet.WriteOffset);
-                    Debug.Log($"{session.ID} >> New Packet Send: {packet.Header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
+                    //Debug.Log($"{session.ID} >> New Packet Send: {packet.Header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
                     if (!tcpSession.Socket.SendAsync(eventArgs))
                     {
                         EventArgsOnCompleted(null, eventArgs);

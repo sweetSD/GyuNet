@@ -19,7 +19,6 @@ namespace GyuNet
         
         public static async Task<bool> ExecuteNonQuery(string query)
         {
-            Debug.Log(ConnectionBuilder.ConnectionString);
             using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
             {
                 await connection.OpenAsync();
@@ -27,12 +26,11 @@ namespace GyuNet
                 {
                     return await new MySqlCommand(query, connection).ExecuteNonQueryAsync() == 1;
                 }
-                Debug.LogError($"MySQL 연결 실패: {connection.State}");
+                throw new Exception("MySQL 연결 실패!");
             }
-            return false;
         }
-        
-        public static async Task<MySqlDataReader> ExecuteReader(string query)
+
+        public static async Task ExecuteReader(string query, Action<MySqlDataReader> callback)
         {
             using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
             {
@@ -40,16 +38,15 @@ namespace GyuNet
                 if (connection.State == ConnectionState.Open)
                 {
                     var reader = await new MySqlCommand(query, connection).ExecuteReaderAsync();
-                    if (reader.IsClosed)
+                    if (reader == null || reader.IsClosed)
                     {
-                        Debug.LogError("MySQL Reader 생성 실패");
-                        return null;
+                        throw new Exception("MySQL Reader 생성 실패!");
                     }
-                    return reader;
+                    callback?.Invoke(reader);
+                    return;
                 }
-                Debug.LogError($"MySQL 연결 실패: {connection.State}");
+                throw new Exception("MySQL 연결 실패!");
             }
-            return null;
         }
 
         public static async Task<MySqlTransaction> BeginTransaction()
@@ -61,11 +58,10 @@ namespace GyuNet
                 {
                     return await connection.BeginTransactionAsync();
                 }
-                Debug.LogError($"MySQL 연결 실패: {connection.State}");
+                throw new Exception("MySQL 연결 실패!");
             }
-            return null;
         }
-        
+
         public static async Task Commit(MySqlTransaction transaction)
         {
             using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
@@ -76,7 +72,7 @@ namespace GyuNet
                     await transaction.CommitAsync();
                     return;
                 }
-                Debug.LogError($"MySQL 연결 실패: {connection.State}");
+                throw new Exception("MySQL 연결 실패!");
             }
         }
     }

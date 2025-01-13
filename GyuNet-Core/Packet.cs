@@ -25,21 +25,8 @@ namespace GyuNet
         }
         
         public short Header { get; set; }
-        
-        private int writeOffset;
-        public int WriteOffset
-        {
-            get => writeOffset;
-            private set => writeOffset = value;
-        }
-        
-        private int readOffset;
-        public int ReadOffset
-        {
-            get => readOffset;
-            private set => readOffset = value;
-        }
-
+        public int WriteOffset { get; private set; }
+        public int ReadOffset { get; private set; }
         public byte[] Buffer { get; private set; } = new byte[Define.PACKET_SIZE];
 
         static Packet()

@@ -43,7 +43,8 @@ namespace GyuNet
                     ReceiveOffset -= bodySize;
                     ReceivedPacketQueue.Enqueue(packet);
                 }
-                else break;
+                else 
+                    break;
             }
         }
     }

@@ -10,7 +10,7 @@ namespace GyuNet
         public event Action<T> Spawned;
         public event Action<T> Despawned;
         
-        private ConcurrentStack<T> objectStack = new ConcurrentStack<T>();
+        private readonly ConcurrentQueue<T> objectQueue = new ConcurrentQueue<T>();
 
         public Pool(int capacity = 1000, bool shouldExpand = true, Action<T> spawned = null, Action<T> despawned = null)
         {
@@ -21,7 +21,7 @@ namespace GyuNet
 
             for (int i = 0; i < Capacity; i++)
             {
-                objectStack.Push(new T());
+                objectQueue.Enqueue(new T());
             }
         }
         
@@ -33,21 +33,21 @@ namespace GyuNet
                 return;
             }
             Despawned?.Invoke(item);
-            objectStack.Push(item);
+            objectQueue.Enqueue(item);
         }
         
         public T Pop()
         {
             T obj;
             
-            if (objectStack.IsEmpty)
+            if (objectQueue.IsEmpty)
             {
                 Debug.LogError("Pool 내부에 Pop할 아이템이 없습니다.");
                 if (ShouldExpand == false)
                     return null;
                 obj = new T();
             }
-            else if (objectStack.TryPop(out obj) == false)
+            else if (objectQueue.TryDequeue(out obj) == false)
             {
                 Debug.LogError("Pool 내부에 Pop하는 중 예외 발생.");
                 return null;

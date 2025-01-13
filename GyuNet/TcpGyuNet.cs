@@ -42,18 +42,15 @@ namespace GyuNet
         {
             lock (session)
             {
-                if (session is TCPSession tcpSession)
+                if (session is TCPSession == false) return;
+                var tcpSession = (TCPSession)session;
+                if (tcpSession.Socket.Connected == false) return;
+                var eventArgs = GyuNetPool.EventArgs.Pop();
+                eventArgs.UserToken = packet;
+                eventArgs.SetBuffer(packet.Buffer, 0, packet.WriteOffset);
+                if (!tcpSession.Socket.SendAsync(eventArgs))
                 {
-                    if (tcpSession.Socket.Connected == false)
-                        return;
-                    var eventArgs = GyuNetPool.EventArgs.Pop();
-                    eventArgs.UserToken = packet;
-                    eventArgs.SetBuffer(packet.Buffer, 0, packet.WriteOffset);
-                    //Debug.Log($"{session.ID} >> New Packet Send: {packet.Header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
-                    if (!tcpSession.Socket.SendAsync(eventArgs))
-                    {
-                        EventArgsOnCompleted(null, eventArgs);
-                    }
+                    EventArgsOnCompleted(null, eventArgs);
                 }
             }
         }
@@ -95,16 +92,13 @@ namespace GyuNet
             }
             
             var session = TCPSession.Pool.Pop();
-            lock (ConnectedSessions)
+            lock (ConnectedSessionsLockObject)
             {
-                while (ConnectedSessions.ContainsKey(sessionID))
-                {
-                    sessionID = unchecked(sessionID + 1);
-                }
                 session.Connected = true;
                 session.ID = sessionID;
                 session.Socket = e.AcceptSocket;
-                ConnectedSessions.AddOrUpdate(session.ID, session, (_, __) => session);
+                ConnectedSessions[session.ID] = session;
+                sessionID = unchecked(sessionID + 1);
             }
             
             var eventArgs = GyuNetPool.EventArgs.Pop();
@@ -139,22 +133,23 @@ namespace GyuNet
             
             if (e.SocketError == SocketError.Success && e.BytesTransferred > 0)
             {
-                if (e.UserToken is TCPSession session)
+                if (e.UserToken is TCPSession == false) 
+                    return;
+
+                var session = (TCPSession)e.UserToken;
+                lock (session)
                 {
-                    lock (session)
+                    if (session.Connected == false)
                     {
-                        if (session.Connected == false)
-                        {
-                            return;
-                        }
-                        session.ReceiveData(e.Buffer, e.BytesTransferred);
-                        while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
-                        {
-                            OnReceivedPacket?.Invoke(this, session, rPacket);
-                        }
+                        return;
                     }
-                    StartReceive(e);
+                    session.ReceiveData(e.Buffer, e.BytesTransferred);
+                    while (session.ReceivedPacketQueue.TryDequeue(out var rPacket))
+                    {
+                        OnReceivedPacket?.Invoke(this, session, rPacket);
+                    }
                 }
+                StartReceive(e);
             }
             else
             {

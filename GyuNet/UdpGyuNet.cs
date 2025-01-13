@@ -88,19 +88,22 @@ namespace GyuNet
                 Debug.LogError("OnAccept Error");
                 return;
             }
-            
-            var session = UDPSession.Pool.Pop();
-            while (ConnectedSessions.ContainsKey(sessionID))
-            {
-                sessionID = unchecked(sessionID + 1);
-            }
-            session.Connected = true;
-            session.ID = sessionID;
-            session.EndPoint = e.RemoteEndPoint;
 
-            e.UserToken = session;
-            SessionEndPointDictionary.TryAdd(session.EndPoint.ToString().GetHashCode(), session);
-            ConnectedSessions.TryAdd(session.ID, session);
+            lock (ConnectedSessionsLockObject)
+            {
+                var session = UDPSession.Pool.Pop();
+                while (ConnectedSessions.ContainsKey(sessionID))
+                {
+                    sessionID = unchecked(sessionID + 1);
+                }
+                session.Connected = true;
+                session.ID = sessionID;
+                session.EndPoint = e.RemoteEndPoint;
+
+                e.UserToken = session;
+                SessionEndPointDictionary.TryAdd(session.EndPoint.ToString().GetHashCode(), session);
+                ConnectedSessions[session.ID] = session;
+            }
             base.OnAccept(e);
         }
 

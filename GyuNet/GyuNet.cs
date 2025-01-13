@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +13,8 @@ namespace GyuNet
         protected Socket ServerSocket;
         protected CancellationTokenSource ServerTerminateCancellationTokenSource = null;
         
-        protected readonly ConcurrentDictionary<int, Session> ConnectedSessions = new ConcurrentDictionary<int, Session>();
+        protected readonly Dictionary<int, Session> ConnectedSessions = new Dictionary<int, Session>();
+        protected readonly object ConnectedSessionsLockObject = new object();
 
         public Action<GyuNet, Session> OnAccepted;
         public Action<GyuNet, Session, Packet> OnReceivedPacket;
@@ -47,15 +49,18 @@ namespace GyuNet
             ServerSocket?.Close();
         }
         
-        private async void Update()
+        private async Task Update()
         {
             while (IsRunning)
             {
-                foreach (var session in ConnectedSessions)
+                lock (ConnectedSessionsLockObject)
                 {
-                    while (session.Value.SendPacketQueue.TryDequeue(out var sPacket))
+                    foreach (var session in ConnectedSessions)
                     {
-                        StartSend(session.Value, sPacket);
+                        while (session.Value.SendPacketQueue.TryDequeue(out var sPacket))
+                        {
+                            StartSend(session.Value, sPacket);
+                        }
                     }
                 }
                 await Task.Delay(100);
@@ -117,11 +122,12 @@ namespace GyuNet
 
         public void StartSend(Packet packet, params int[] excludes)
         {
-            foreach (var session in ConnectedSessions)
+            lock (ConnectedSessionsLockObject)
             {
-                if (excludes != null && Array.IndexOf(excludes, session.Key) != -1)
-                    continue;
-                StartSend(session.Value, packet);
+                foreach (var session in ConnectedSessions.Where(session => excludes == null || Array.IndexOf(excludes, session.Key) == -1))
+                {
+                    StartSend(session.Value, packet);
+                }
             }
         }
         
@@ -140,14 +146,15 @@ namespace GyuNet
 
         protected virtual void OnDisconnect(SocketAsyncEventArgs e)
         {
-            if ((e.UserToken is Session session))
+            if (e.UserToken is Session == false) 
+                return;
+            
+            var session = (Session)e.UserToken;
+            lock (session)
             {
-                lock (session)
-                {
-                    session.Connected = false;
-                    ConnectedSessions.TryRemove(session.ID, out _);
-                    OnDisconnected?.Invoke(this, session);
-                }
+                session.Connected = false;
+                ConnectedSessions.Remove(session.ID);
+                OnDisconnected?.Invoke(this, session);
             }
         }
     }

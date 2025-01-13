@@ -92,6 +92,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="TcpGyuNet.cs" />
+    <Compile Include="TpsDatabase.cs" />
     <Compile Include="UdpGyuNet.cs" />
     <Compile Include="Unity.cs" />
   </ItemGroup>

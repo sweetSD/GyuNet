@@ -5,86 +5,6 @@ using System.Threading.Tasks;
 
 namespace GyuNet
 {
-    class CommonDatabase
-    {
-        public static async Task<bool> CheckAccount(string name, string pw = null)
-        {
-            var duplicated = false;
-            await GyuNetMySQL.ExecuteReader($"SELECT * FROM user WHERE Name = '{name}' {(string.IsNullOrEmpty(pw) ? string.Empty : $"AND Password = '{pw}'")}",
-                reader =>
-                {
-                    duplicated = reader.HasRows;
-                    reader.Close();
-                });
-            return duplicated;
-        }
-
-        // 새로운 유저 정보를 만듭니다.
-        public static async Task CreateNewUser(string name, string pw)
-        {
-            await GyuNetMySQL.ExecuteNonQuery($"INSERT INTO user (Name, Password) VALUES ('{name}', '{pw}')");
-        }
-
-        // 새로운 게임 기록 정보를 만듭니다.
-        public static async Task CreateNewRecord(string userName, int killCount)
-        {
-            await GyuNetMySQL.ExecuteReader($"SELECT ID FROM user WHERE Name = '{userName}'",
-                async reader => {
-                    if (reader.HasRows)
-                    {
-                        reader.Read();
-                        var id = reader["id"];
-                        reader.Close();
-                        await GyuNetMySQL.ExecuteNonQuery($"INSERT INTO fps_record (UserId, KillCount) VALUES ({id}, {killCount})");
-                    }
-                });
-        }
-
-        // 랭킹 데이터를 가져옵니다.
-        public static async Task<List<(int?, string, int, string)>> GetRank()
-        {
-            return await GetRecord_Internal(@"
-                SELECT u.ID, u.Name, r.KillCount
-                FROM user u
-                JOIN(
-                  SELECT UserID, SUM(KillCount) AS KillCount
-                  FROM fps_record
-                  GROUP BY UserID
-                ) r ON u.ID = r.UserID
-                ORDER BY r.KillCount DESC; ", true);
-        }
-
-        // 개인 기록 데이터를 가져옵니다.
-        public static async Task<List<(int?, string, int, string)>> GetRecord(string name)
-        {
-            return await GetRecord_Internal($@"
-                SELECT user.Name, fps_record.KillCount, fps_record.CreatedAt 
-                FROM user 
-                JOIN fps_record 
-                ON user.id = fps_record.userid 
-                WHERE user.name = '{name}';", false);
-        }
-
-        // 랭킹과 기록은 구문이 비슷하기 때문에 내부 함수 제작
-        private static async Task<List<(int?, string, int, string)>> GetRecord_Internal(string query, bool isRankData)
-        {
-            List<(int?, string, int, string)> rankData = new List<(int?, string, int, string)>();
-            int index = 1;
-            await GyuNetMySQL.ExecuteReader(query,
-                reader => {
-                    while (reader.Read() && index <= 100)
-                    {
-                        string data = string.Empty;
-                        if (isRankData)
-                            rankData.Add((index++, reader["Name"].ToString(), reader.GetInt32("KillCount"), string.Empty));
-                        else
-                            rankData.Add((null, reader["Name"].ToString(), reader.GetInt32("KillCount"), reader.GetDateTime("CreatedAt").ToString("yyyy-MM-dd_HH+mm+ss")));
-                    }
-                });
-            return rankData;
-        }
-    }
-    
     namespace Unity
     {
         public enum PacketHeader : short
@@ -191,7 +111,6 @@ namespace GyuNet
             void OnReceivePacket(GyuNet net, Session session, Packet packet)
             {
                 var header = (PacketHeader)packet.Header;
-                //Debug.Log($"{session.ID} >> New Packet Received: {header} | Read: {packet.ReadOffset} | Write: {packet.WriteOffset}");
                 switch (header)
                 {
                     case PacketHeader.Ping:
@@ -288,7 +207,7 @@ namespace GyuNet
             {
                 var name = packet.DeserializeString();
                 var pw = packet.DeserializeString();
-                var duplicated = await CommonDatabase.CheckAccount(name, pw);
+                var duplicated = await TpsDatabase.CheckAccount(name, pw);
                 
                 if (duplicated)
                 {
@@ -311,7 +230,7 @@ namespace GyuNet
             {
                 var name = packet.DeserializeString();
                 var pw = packet.DeserializeString();
-                var duplicated = await CommonDatabase.CheckAccount(name, pw);
+                var duplicated = await TpsDatabase.CheckAccount(name, pw);
                 
                 if (duplicated)
                 {
@@ -321,7 +240,7 @@ namespace GyuNet
                 }
                 else
                 {
-                    await CommonDatabase.CreateNewUser(name, pw);
+                    await TpsDatabase.CreateNewUser(name, pw);
                     session.Name = name;
                     session.AccessAllowed = true;
                     
@@ -562,16 +481,15 @@ namespace GyuNet
 
             async void OnRequestRank(GyuNet net, Session session, Packet packet)
             {
-                var rankData = await CommonDatabase.GetRank();
+                var rankData = await TpsDatabase.GetRank();
                 var sendPacket = Packet.Pool.Pop();
 
                 sendPacket.Serialize(rankData.Count);
                 foreach (var data in rankData)
                 {
-                    sendPacket.Serialize(data.Item1 ?? 0);
-                    sendPacket.Serialize(data.Item2);
-                    sendPacket.Serialize(data.Item3);
-                    sendPacket.Serialize(data.Item4);
+                    sendPacket.Serialize(data.Index);
+                    sendPacket.Serialize(data.Name);
+                    sendPacket.Serialize(data.KillCount);
                 }
                 sendPacket.SetHeader((short)PacketHeader.Rank);
                 session.SendPacketQueue.Enqueue(sendPacket);
@@ -579,16 +497,15 @@ namespace GyuNet
             
             async void OnRequestRecord(GyuNet net, Session session, Packet packet)
             {
-                var rankData = await CommonDatabase.GetRecord(session.Name);
+                var rankData = await TpsDatabase.GetRecord(session.Name);
                 var sendPacket = Packet.Pool.Pop();
 
                 sendPacket.Serialize(rankData.Count);
                 foreach (var data in rankData)
                 {
-                    sendPacket.Serialize(data.Item1 ?? 0);
-                    sendPacket.Serialize(data.Item2);
-                    sendPacket.Serialize(data.Item3);
-                    sendPacket.Serialize(data.Item4);
+                    sendPacket.Serialize(data.Name);
+                    sendPacket.Serialize(data.KillCount);
+                    sendPacket.Serialize(data.Date);
                 }
                 sendPacket.SetHeader((short)PacketHeader.Record);
                 session.SendPacketQueue.Enqueue(sendPacket);
@@ -597,7 +514,7 @@ namespace GyuNet
             async void OnRequestCreateRecord(GyuNet net, Session session, Packet packet)
             {
                 var killCount = packet.DeserializeInt();
-                await CommonDatabase.CreateNewRecord(session.Name, killCount);
+                await TpsDatabase.CreateNewRecord(session.Name, killCount);
             }
 
             void OnRequestGameEnd(GyuNet net, Session session, Packet packet)

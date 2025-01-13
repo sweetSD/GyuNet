@@ -16,10 +16,12 @@ namespace GyuNet
             MinimumPoolSize = 10,
             MaximumPoolSize = 1000,
         };
+
+        public static MySqlConnection CreateConnection() => new MySqlConnection(ConnectionBuilder.ConnectionString);
         
         public static async Task<bool> ExecuteNonQuery(string query)
         {
-            using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
+            using (var connection = CreateConnection())
             {
                 await connection.OpenAsync();
                 if (connection.State == ConnectionState.Open)
@@ -32,47 +34,45 @@ namespace GyuNet
 
         public static async Task ExecuteReader(string query, Action<MySqlDataReader> callback)
         {
-            using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
+            using (var connection = CreateConnection())
             {
                 await connection.OpenAsync();
-                if (connection.State == ConnectionState.Open)
+                if (connection.State != ConnectionState.Open)
                 {
-                    var reader = await new MySqlCommand(query, connection).ExecuteReaderAsync();
-                    if (reader == null || reader.IsClosed)
-                    {
-                        throw new Exception("MySQL Reader 생성 실패!");
-                    }
-                    callback?.Invoke(reader);
-                    return;
+                    throw new Exception("MySQL 연결 실패!");
                 }
-                throw new Exception("MySQL 연결 실패!");
+                var reader = await new MySqlCommand(query, connection).ExecuteReaderAsync();
+                if (reader == null || reader.IsClosed)
+                {
+                    throw new Exception("MySQL Reader 생성 실패!");
+                }
+                callback?.Invoke(reader);
             }
         }
 
         public static async Task<MySqlTransaction> BeginTransaction()
         {
-            using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
+            using (var connection = CreateConnection())
             {
                 await connection.OpenAsync();
-                if (connection.State == ConnectionState.Open)
+                if (connection.State != ConnectionState.Open)
                 {
-                    return await connection.BeginTransactionAsync();
+                    throw new Exception("MySQL 연결 실패!");
                 }
-                throw new Exception("MySQL 연결 실패!");
+                return await connection.BeginTransactionAsync();
             }
         }
 
         public static async Task Commit(MySqlTransaction transaction)
         {
-            using (var connection = new MySqlConnection(ConnectionBuilder.ConnectionString))
+            using (var connection = CreateConnection())
             {
                 await connection.OpenAsync();
-                if (connection.State == ConnectionState.Open)
+                if (connection.State != ConnectionState.Open)
                 {
-                    await transaction.CommitAsync();
-                    return;
+                    throw new Exception("MySQL 연결 실패!");
                 }
-                throw new Exception("MySQL 연결 실패!");
+                await transaction.CommitAsync();
             }
         }
     }

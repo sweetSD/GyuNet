@@ -10,30 +10,15 @@ namespace GyuNet
     {
         public static async Task<bool> CheckAccount(string name, string pw = null)
         {
+            var query = $"SELECT * FROM user WHERE Name = @id {(string.IsNullOrEmpty(pw) ? string.Empty : "AND Password = @pw")}";
             var duplicated = false;
-            using (var connection = GyuNetMySQL.CreateConnection())
+
+            using (var reader = await GyuNetMySQL.ExecuteReader(query, new List<(string Name, string Value)>()
+                   {
+                       ("@id", name), ("@pw", pw)
+                   }))
             {
-                await connection.OpenAsync();
-                if (connection.State != ConnectionState.Open)
-                {
-                    throw new Exception("Failed connect to database.");
-                }
-
-                var query = $"SELECT * FROM user WHERE Name = @id {(string.IsNullOrEmpty(pw) ? string.Empty : "AND Password = @pw")}";
-                using (var cmd = new MySqlCommand(query, connection))
-                {
-                    cmd.Parameters.AddWithValue("@id", name);
-                    cmd.Parameters.AddWithValue("@pw", pw);
-
-                    using (var reader = await cmd.ExecuteReaderAsync())
-                    {
-                        if (reader == null || reader.IsClosed)
-                        {
-                            throw new Exception("Failed open reader.");
-                        }
-                        duplicated = reader.HasRows;
-                    }
-                }
+                duplicated = reader.HasRows;
             }
             return duplicated;
         }
@@ -41,65 +26,38 @@ namespace GyuNet
         // 새로운 유저 정보를 만듭니다.
         public static async Task CreateNewUser(string name, string pw)
         {
-            using (var connection = GyuNetMySQL.CreateConnection())
+            var query = "INSERT INTO user (Name, Password) VALUES (@id, @pw)";
+            await GyuNetMySQL.ExecuteNonQuery(query, new List<(string Name, string Value)>()
             {
-                await connection.OpenAsync();
-                if (connection.State != ConnectionState.Open)
-                {
-                    throw new Exception("Failed connect to database.");
-                }
-
-                var query = "INSERT INTO user (Name, Password) VALUES (@id, @pw)";
-                using (var cmd = new MySqlCommand(query, connection))
-                {
-                    cmd.Parameters.AddWithValue("@id", name);
-                    cmd.Parameters.AddWithValue("@pw", pw);
-
-                    await cmd.ExecuteNonQueryAsync();
-                }
-            }
+                ("@id", name), ("@pw", pw)
+            });
         }
 
         // 새로운 게임 기록 정보를 만듭니다.
-        public static async Task CreateNewRecord(string userName, int killCount)
+        public static async Task<bool> CreateNewRecord(string userName, int killCount)
         {
-            using (var connection = GyuNetMySQL.CreateConnection())
+            var query = $"SELECT ID FROM user WHERE Name = @user";
+
+            using (var reader = await GyuNetMySQL.ExecuteReader(query, new List<(string Name, string Value)>()
+                   {
+                       ("@user", userName)
+                   }))
             {
-                await connection.OpenAsync();
-                if (connection.State != ConnectionState.Open)
+                if (reader.HasRows == false)
                 {
-                    throw new Exception("Failed connect to database.");
+                    return false;
                 }
-
-                var query = $"SELECT ID FROM user WHERE Name = @user";
-                using (var cmd = new MySqlCommand(query, connection))
-                {
-                    cmd.Parameters.AddWithValue("@user", userName);
-
-                    using (var reader = await cmd.ExecuteReaderAsync())
-                    {
-                        if (reader == null || reader.IsClosed)
-                        {
-                            throw new Exception("Failed open reader.");
-                        }
-
-                        if (reader.HasRows == false)
-                        {
-                            return;
-                        }
-                        
-                        reader.Read();
-                        var id = reader["id"];
-                        await GyuNetMySQL.ExecuteNonQuery($"INSERT INTO fps_record (UserId, KillCount) VALUES ({id}, {killCount})");
-                    }
-                }
+                reader.Read();
+                var id = reader["id"];
+                await GyuNetMySQL.ExecuteNonQuery($"INSERT INTO fps_record (UserId, KillCount) VALUES ({id}, {killCount})");
             }
+
+            return true;
         }
 
         // 랭킹 데이터를 가져옵니다.
         public static async Task<List<(int Index, string Name, int KillCount)>> GetRank()
         {
-            List<(int, string, int)> rankData = new List<(int, string, int)>();
             var query = @"
                 SELECT u.ID, u.Name, r.KillCount
                 FROM user u
@@ -109,35 +67,37 @@ namespace GyuNet
                   GROUP BY UserID
                 ) r ON u.ID = r.UserID
                 ORDER BY r.KillCount DESC; ";
-            var index = 1;
-            await GyuNetMySQL.ExecuteReader(query,
-                reader => {
-                    while (reader.Read() && index <= 100)
-                    {
-                        rankData.Add((index++, reader["Name"].ToString(), reader.GetInt32("KillCount")));
-                    }
-                });
+            var rankData = new List<(int, string, int)>();
+            
+            using (var reader = await GyuNetMySQL.ExecuteReader(query))
+            {
+                var index = 1;
+                while (reader.Read() && index <= 100)
+                {
+                    rankData.Add((index++, reader["Name"].ToString(), reader.GetInt32("KillCount")));
+                }
+            }
             return rankData;
         }
 
         // 개인 기록 데이터를 가져옵니다.
         public static async Task<List<(string Name, int KillCount, string Date)>> GetRecord(string name)
         {
-            List<(string, int, string)> rankData = new List<(string, int, string)>();
             var query = $@"
                 SELECT user.Name, fps_record.KillCount, fps_record.CreatedAt 
                 FROM user 
                 JOIN fps_record 
                 ON user.id = fps_record.userid 
                 WHERE user.name = '{name}';";
-            var index = 1;
-            await GyuNetMySQL.ExecuteReader(query,
-                reader => {
-                    while (reader.Read() && index <= 100)
-                    {
-                            rankData.Add((reader["Name"].ToString(), reader.GetInt32("KillCount"), reader.GetDateTime("CreatedAt").ToString("yyyy-MM-dd_HH+mm+ss")));
-                    }
-                });
+            var rankData = new List<(string, int, string)>();
+            
+            using (var reader = await GyuNetMySQL.ExecuteReader(query))
+            {
+                while (reader.Read())
+                {
+                    rankData.Add((reader["Name"].ToString(), reader.GetInt32("KillCount"), reader.GetDateTime("CreatedAt").ToString("yyyy-MM-dd_HH+mm+ss")));
+                }
+            }
             return rankData;
         }
     }

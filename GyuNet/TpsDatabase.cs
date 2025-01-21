@@ -13,10 +13,7 @@ namespace GyuNet
             var query = $"SELECT * FROM user WHERE Name = @id {(string.IsNullOrEmpty(pw) ? string.Empty : "AND Password = @pw")}";
             var duplicated = false;
 
-            using (var reader = await GyuNetMySQL.ExecuteReader(query, new List<(string Name, string Value)>()
-                   {
-                       ("@id", name), ("@pw", pw)
-                   }))
+            using (var reader = await GyuNetMySQL.ExecuteReader(query, ("@id", name), ("@pw", pw))) 
             {
                 duplicated = reader.HasRows;
             }
@@ -27,10 +24,7 @@ namespace GyuNet
         public static async Task CreateNewUser(string name, string pw)
         {
             var query = "INSERT INTO user (Name, Password) VALUES (@id, @pw)";
-            await GyuNetMySQL.ExecuteNonQuery(query, new List<(string Name, string Value)>()
-            {
-                ("@id", name), ("@pw", pw)
-            });
+            await GyuNetMySQL.ExecuteNonQuery(query, ("@id", name), ("@pw", pw));
         }
 
         // 새로운 게임 기록 정보를 만듭니다.
@@ -38,10 +32,7 @@ namespace GyuNet
         {
             var query = $"SELECT ID FROM user WHERE Name = @user";
 
-            using (var reader = await GyuNetMySQL.ExecuteReader(query, new List<(string Name, string Value)>()
-                   {
-                       ("@user", userName)
-                   }))
+            using (var reader = await GyuNetMySQL.ExecuteReader(query,  ("@user", userName)))
             {
                 if (reader.HasRows == false)
                 {

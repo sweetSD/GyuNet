@@ -20,7 +20,7 @@ namespace GyuNet
 
         public static MySqlConnection CreateConnection() => new MySqlConnection(ConnectionBuilder.ConnectionString);
         
-        public static async Task<bool> ExecuteNonQuery(string query, List<(string Name, string Value)> parameters = null)
+        public static async Task<bool> ExecuteNonQuery(string query, params (string Name, string Value)[] parameters)
         {
             using (var connection = CreateConnection())
             {
@@ -43,7 +43,7 @@ namespace GyuNet
             }
         }
 
-        public static async Task<MySqlDataReader> ExecuteReader(string query, List<(string Name, string Value)> parameters = null)
+        public static async Task<MySqlDataReader> ExecuteReader(string query, params (string Name, string Value)[] parameters)
         {
             using (var connection = CreateConnection())
             {
